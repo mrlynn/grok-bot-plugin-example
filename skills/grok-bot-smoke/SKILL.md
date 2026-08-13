@@ -1,14 +1,13 @@
 ---
 name: grok-bot-smoke
-description: Smoke-test that this Grok Bot example plugin is loaded. Use when the user asks whether the grok-bot-plugin-example plugin is installed, wants a hello from it, or is verifying local plugin load in Grok Bot.
+description: Short hello / load check for this plugin. Use when the user asks whether grok-bot-plugin-example is installed, wants a quick hello, or is verifying local plugin load. For real publisher workflows, prefer get-listed-in-grok-bot, scaffold-grok-bot-plugin, check-grok-bot-compatibility, or distribution-tiers.
 ---
 
-# Grok Bot plugin smoke test
+# Plugin load check
 
-You are running from the `grok-bot-plugin-example` plugin.
+Confirm this plugin is loaded, then point at the real skills:
 
-When invoked:
-1. Tell the user this plugin is loaded in Grok Bot.
-2. State that Grok Bot plugins are Cursor plugins (same manifest, same review pipeline).
-3. Canonical submit path: public Git repo to https://cursor.com/marketplace/publish (or send the repo to the Cursor team). `github.com/xai-org/plugin-marketplace` is not a submission destination.
-4. This example is skills-only. To add an MCP server, put `mcp.json` at the plugin root and declare any secrets as `variables` in the manifest (placeholders only, never real values).
+1. **Loaded:** `grok-bot-plugin-example` (Agent Plugins, skills-only) is available.
+2. **Job:** Help a publisher or Cursor AE/FE go from "I have an MCP server or skill" to "it appears in Grok Bot" without a hand-routed Slack thread.
+3. **Submit path:** public Git repo → https://cursor.com/marketplace/publish. `github.com/xai-org/plugin-marketplace` is not a submission destination.
+4. **Next:** Use `get-listed-in-grok-bot` for the full answer, `scaffold-grok-bot-plugin` to start a repo, `check-grok-bot-compatibility` to review one, or `distribution-tiers` for public vs team vs default.

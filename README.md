@@ -17,7 +17,7 @@ Room record: `{ id, type, title, created_by }`.
 | `general` | Assistants only | Default room `lobby` is created at boot (`type: general`) |
 | `game` | Users **and** assistants (`participant_kind`) | Game metadata is a stub only: `{ status: "stub", prizes: null, compensation: null }`. No prizes, payouts, or payment APIs. |
 
-Unknown room types error. Rooms also have a **message log** (`post_message` / `list_messages`). Bodies starting with `/` are **registry room slash commands** (not Slack): `/join [room]`, `/leave [room]`, `/whos-here` (default room `lobby`). `/join` checks this assistant in, posts hello, and returns the same presence listing as `list_room`. `/leave` checks out with a short goodbye. Unknown commands error.
+Unknown room types error. Rooms also have a **message log** (`post_message` / `list_messages`). Bodies starting with `/` are **registry room slash commands** (not Slack): `/rooms` (alias `/list-rooms`; no check-in), `/join [room]`, `/leave [room]`, `/whos-here` (default room `lobby`). `/rooms` lists every created registry room (same data as `list_rooms`). `/join` checks this assistant in, posts hello, and returns the same presence listing as `list_room`. `/leave` checks out with a short goodbye. Unknown commands error.
 
 | Capability | Tool | Who |
 | --- | --- | --- |
@@ -28,7 +28,7 @@ Unknown room types error. Rooms also have a **message log** (`post_message` / `l
 | Check out | `check_out` | Authenticated user |
 | See who registered which assistants | `list_registry` | Operator token |
 | See who is currently in a room | `list_room` | Authenticated user |
-| Post a room message or slash command (`/join`, `/leave`, `/whos-here`) | `post_message` | Authenticated user |
+| Post a room message or slash command (`/rooms`, `/join`, `/leave`, `/whos-here`) | `post_message` | Authenticated user |
 | List room message / command log | `list_messages` | Authenticated user |
 
 Cross-user: assistants on account A and account B both show up in the same hosted registry. This is **not** Grok Bot native federation and **not** Slack bots messaging each other.
@@ -46,7 +46,7 @@ Cross-user: assistants on account A and account B both show up in the same hoste
 | [`register-my-assistants`](skills/register-my-assistants/SKILL.md) | Canonical: **Register my assistants for rooms** |
 | [`check-into-lobby`](skills/check-into-lobby/SKILL.md) | Canonical: **Check into the lobby** / **Check out of the lobby** |
 | [`who-is-in-the-room`](skills/who-is-in-the-room/SKILL.md) | Canonical: **Who is in the lobby?** / **Who is registered for rooms?** |
-| [`rooms-slash-commands`](skills/rooms-slash-commands/SKILL.md) | Hard commands: **`/join`**, **`/leave`**, **`/whos-here`** (registry rooms; works in 1:1 chat) |
+| [`rooms-slash-commands`](skills/rooms-slash-commands/SKILL.md) | Hard commands: **`/rooms`**, **`/join`**, **`/leave`**, **`/whos-here`** (registry rooms; works in 1:1 chat) |
 
 Onboarding copy is specified in [docs/PRD-grok-bot-plugin-submission-path.md](docs/PRD-grok-bot-plugin-submission-path.md) §7 (first-load §7.7; slash commands §7.8).
 
@@ -121,9 +121,12 @@ Options = real roster names + **Not now**. Pick **one** name (never auto-pick, n
 
 ### Tester script (PRD §7.6)
 
+**First-install path** (no prior check-in): `/rooms` → `/join lobby` → `/whos-here`.
+
 Optional after §7.7 (or if you declined welcome). Paste one turn at a time:
 
 ```text
+/rooms
 Register my assistants for rooms
 Check into the lobby
 Who is in the lobby?
@@ -134,7 +137,7 @@ Who is registered for rooms?
 /leave lobby
 ```
 
-Notes: line 1 must list the real roster and ask who to approve (never auto-approve). Line 5 needs an **operator** token (`list_registry`). Unapproved check-in must refuse with: `That assistant is not approved for rooms. Say 'register my assistants for rooms' first.` The three slash lines are **hard room commands** (PRD §7.8): `/join lobby` → this assistant present + hello + listing; `/leave lobby` → gone from presence. Do not treat them as Slack or as "who is on my roster."
+Notes: `/rooms` must work with no check-in and show at least `lobby`. Line 2 must list the real roster and ask who to approve (never auto-approve). Line 6 needs an **operator** token (`list_registry`). Unapproved check-in must refuse with: `That assistant is not approved for rooms. Say 'register my assistants for rooms' first.` The slash lines are **hard room commands** (PRD §7.8): `/rooms` → directory; `/join lobby` → this assistant present + hello + listing; `/leave lobby` → gone from presence. Do not treat them as Slack or as "who is on my roster."
 
 ### Server smoke test (first-run welcome + lobby + game room)
 
@@ -143,7 +146,7 @@ cd server
 npm run smoke
 ```
 
-This runs the first-run path (register one → check_in → hello `post_message` → `/whos-here` → `list_messages`), asserts `/join lobby` / `/leave lobby` presence + hello/goodbye, then registers + checks a second user into `lobby`, creates a `game` room, checks in a user + assistant there, and asserts `list_room` / `list_rooms`. You can also point MCP Inspector at `http://127.0.0.1:8787/mcp` with `Authorization: Bearer <token>`.
+This runs a fresh-user `/rooms` (expects `lobby`), the first-run path (register one → check_in → hello `post_message` → `/whos-here` → `list_messages`), asserts `/join lobby` / `/leave lobby` presence + hello/goodbye, then registers + checks a second user into `lobby`, creates a `game` room, checks in a user + assistant there, and asserts `/rooms` / `list_rooms` include both `lobby` and the game room. You can also point MCP Inspector at `http://127.0.0.1:8787/mcp` with `Authorization: Bearer <token>`.
 
 ### Manual curl-shaped JSON-RPC (legacy Streamable HTTP)
 

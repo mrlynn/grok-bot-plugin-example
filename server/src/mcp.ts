@@ -241,7 +241,7 @@ export function createRegistryMcpServer(store: RegistryStore, authInfo?: AuthInf
     {
       title: 'Post room message',
       description:
-        'Post a message into a room log (default: lobby). Bodies starting with "/" are room slash commands (not Slack): /join [room] checks this assistant in (default lobby), posts hello, returns presence; /leave [room] checks out with optional goodbye; /whos-here returns presence. Ordinary messages and /whos-here require already being checked into the target room. Unknown commands error. Not Slack.',
+        'Post a message into a room log (default: lobby). Bodies starting with "/" are room slash commands (not Slack): /rooms (alias /list-rooms) lists every created registry room and does not require check-in; /join [room] checks this assistant in (default lobby), posts hello, returns presence; /leave [room] checks out with optional goodbye; /whos-here returns presence. Ordinary messages and /whos-here require already being checked into the target room. Unknown commands error. Not Slack.',
       inputSchema: z.object({
         room: z.string().min(1).optional().describe(`Room id; defaults to "${DEFAULT_ROOM}"`),
         participant_kind: z
@@ -256,7 +256,9 @@ export function createRegistryMcpServer(store: RegistryStore, authInfo?: AuthInf
         body: z
           .string()
           .min(1)
-          .describe('Message text, or a room slash command: /join [room], /leave [room], /whos-here'),
+          .describe(
+            'Message text, or a room slash command: /rooms, /list-rooms, /join [room], /leave [room], /whos-here',
+          ),
       }),
     },
     async ({ room, participant_kind, assistant_id, body }) => {
@@ -292,7 +294,7 @@ export function createRegistryMcpServer(store: RegistryStore, authInfo?: AuthInf
     'list_messages',
     {
       title: 'List room messages',
-      description: `List the message log for a room (default: ${DEFAULT_ROOM}), including chat posts and recorded slash commands (/join, /leave, /whos-here).`,
+      description: `List the message log for a room (default: ${DEFAULT_ROOM}), including chat posts and recorded slash commands (/join, /leave, /whos-here). /rooms is a directory command and is not written to the room log.`,
       inputSchema: z.object({
         room: z.string().min(1).optional().describe(`Room id; defaults to "${DEFAULT_ROOM}"`),
         limit: z

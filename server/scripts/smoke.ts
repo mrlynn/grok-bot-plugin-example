@@ -1,9 +1,10 @@
 /**
  * Local smoke:
- * 1) first-run welcome path: register one → check_in lobby → hello → /whos-here
- * 2) /join lobby → presence + hello + listing; /leave lobby → removed
- * 3) two users register + assistant check_in to lobby; list_room shows both
- * 4) operator create_room(game); user + assistant participants; list_rooms
+ * 1) fresh user (no check-in) /rooms → at least lobby
+ * 2) first-run welcome path: register one → check_in lobby → hello → /whos-here
+ * 3) /join lobby → presence + hello + listing; /leave lobby → removed
+ * 4) two users register + assistant check_in to lobby; list_room shows both
+ * 5) operator create_room(game); user + assistant participants; /rooms + list_rooms include both
  *
  * Usage (from server/):
  *   npm run smoke
@@ -28,6 +29,9 @@ async function main(): Promise<void> {
   }
 
   try {
+    // Brand-new install: /rooms with no prior check-in / register
+    await runRoomsSlashPath(TOKENS.alice, { expectIds: ['lobby'] });
+
     await runFirstRunWelcomePath('alice', TOKENS.alice, {
       id: 'alice-helper',
       name: 'Alice Helper',
@@ -82,6 +86,12 @@ async function main(): Promise<void> {
     });
     console.log('create_room:', JSON.stringify(created, null, 2));
 
+    // After create_room: /rooms (still no need for presence) includes lobby + game room
+    await runRoomsSlashPath(TOKENS.bob, {
+      expectIds: ['lobby', 'arena-1'],
+      alsoAlias: true,
+    });
+
     // Game rooms: user participant (alice) + assistant participant (bob's helper)
     await callTool(TOKENS.alice, 'check_in', {
       room: 'arena-1',
@@ -119,11 +129,65 @@ async function main(): Promise<void> {
     const registry = await callTool(TOKENS.ops, 'list_registry', {});
     console.log('list_registry:', JSON.stringify(registry, null, 2));
 
-    console.log('SMOKE OK: first-run welcome + /join|/leave + lobby + game room');
+    console.log('SMOKE OK: /rooms + first-run welcome + /join|/leave + lobby + game room');
   } finally {
     if (child?.pid) {
       child.kill('SIGTERM');
     }
+  }
+}
+
+/**
+ * Fresh install: /rooms with no check-in. Expects command_result.rooms to include
+ * every id in expectIds (at least lobby). Optionally also try /list-rooms alias.
+ */
+async function runRoomsSlashPath(
+  token: string,
+  opts: { expectIds: string[]; alsoAlias?: boolean },
+): Promise<void> {
+  const roomsResult = await callTool(token, 'post_message', { body: '/rooms' });
+  assertRoomsCommandResult(roomsResult, opts.expectIds, '/rooms');
+
+  if (opts.alsoAlias) {
+    const aliasResult = await callTool(token, 'post_message', { body: '/list-rooms' });
+    assertRoomsCommandResult(aliasResult, opts.expectIds, '/list-rooms');
+  }
+
+  console.log(`rooms slash OK (expect ${opts.expectIds.join(', ')})`);
+}
+
+function assertRoomsCommandResult(
+  payload: unknown,
+  expectIds: string[],
+  label: string,
+): void {
+  const result = payload as {
+    message?: unknown;
+    command_result?: {
+      command?: string;
+      rooms?: Array<{ id: string; type?: string; title?: string; created_by?: string }>;
+      participants?: unknown;
+    };
+  };
+  if (result.message != null) {
+    throw new Error(`Expected ${label} not to write a room log message; got: ${JSON.stringify(payload)}`);
+  }
+  if (result.command_result?.command !== 'rooms') {
+    throw new Error(`Expected ${label} command_result.command=rooms; got: ${JSON.stringify(payload)}`);
+  }
+  if (result.command_result.participants !== undefined) {
+    throw new Error(`Expected ${label} not to dump participants/roster; got: ${JSON.stringify(payload)}`);
+  }
+  const rooms = result.command_result.rooms ?? [];
+  const ids = new Set(rooms.map((r) => r.id));
+  for (const id of expectIds) {
+    if (!ids.has(id)) {
+      throw new Error(`Expected ${label} to include room "${id}"; got: ${JSON.stringify(rooms)}`);
+    }
+  }
+  const lobby = rooms.find((r) => r.id === 'lobby');
+  if (lobby && (lobby.type !== 'general' || !lobby.title)) {
+    throw new Error(`Expected lobby type/title on ${label}; got: ${JSON.stringify(lobby)}`);
   }
 }
 

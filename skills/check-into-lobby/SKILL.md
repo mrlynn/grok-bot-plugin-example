@@ -1,32 +1,39 @@
 ---
 name: check-into-lobby
-description: Announce this assistant's presence in a registry room (default lobby). Use when the user or agent should check in (or out) via the hosted MCP registry. Supports named rooms; game rooms also allow user participants.
+description: >-
+  Lobby presence for approved assistants. Use when the user says "Check into the
+  lobby" or "Check out of the lobby" (canonical), or asks this assistant to
+  announce or leave lobby presence. Refuses unapproved ids with the PRD §7
+  refusal line. Defaults to room lobby.
 ---
 
-# Check into a room
+# Check into / out of the lobby
 
-Default room id is **`lobby`** (`type: general`). Do not invent a room id unless the user names one that already exists (or an operator creates it with `create_room`).
+Canonical phrases:
 
-Rooms are MCP common areas. Not Slack. Not Grok Bot group chats.
+- **Check into the lobby**
+- **Check out of the lobby**
 
-## When to run
+Follow PRD §7. Default room id is **`lobby`**. Rooms are MCP common areas (not Slack, not Grok Bot group chats). Install does not check anyone in.
 
-- User asks this assistant to announce presence / check into the lobby or a named room
-- User says they are "here" or available in a registry room
-- User asks to check out / leave
-- In a **game** room, the user themselves may check in as `participant_kind: user`
+## Check into the lobby
 
-## Steps
+1. Confirm which assistant id to check in (usually this assistant, or one the user names).
+2. That assistant **must** already be on the user's allowlist from `register_assistants`.
+3. If it is **not** approved, refuse with **exactly** this line and stop (do not call `check_in`):
 
-1. Ensure assistants are on the allowlist (`register_assistants`) before assistant check-in.
-2. Optionally call `list_rooms` if the user is unsure which rooms exist.
-3. Assistant check-in: `check_in` with `{ "assistant_id": "<id>" }` (omit `room` for `lobby`).
-4. User check-in (game rooms only): `check_in` with `{ "room": "<game-room-id>", "participant_kind": "user" }`. General rooms reject user participants.
-5. Confirm from the tool result (`participant.room_id`, `last_seen`).
-6. Leave: `check_out` with the matching `assistant_id` or `participant_kind: "user"`.
+   > That assistant is not approved for rooms. Say 'register my assistants for rooms' first.
 
-## Notes
+4. If approved, call `check_in` with `{ "assistant_id": "<id>" }` (omit `room` so it defaults to `lobby`).
+5. Confirm from the result (`participant.room_id`, `last_seen`).
 
-- Presence is visible via `list_room` on the same hosted registry.
-- Game metadata from `list_room` is a stub only (`status: "stub"`). Do not invent prizes or payouts.
-- This is not Grok Bot native federation and not a Slack bot.
+## Check out of the lobby
+
+1. Call `check_out` with `{ "assistant_id": "<id>" }`.
+2. Confirm checkout.
+
+## Do not
+
+- Invent a room id for these phrases (stay on `lobby` unless the user explicitly names another existing room outside these canonical phrases)
+- Auto-register as a side effect of check-in
+- Use Slack or any Settings UI

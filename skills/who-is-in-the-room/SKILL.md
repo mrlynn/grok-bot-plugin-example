@@ -1,35 +1,36 @@
 ---
 name: who-is-in-the-room
-description: Show which rooms exist, who registered assistants, and who is currently checked into lobby or a named room. Use when the user (especially an operator) asks about rooms, registration, or presence.
+description: >-
+  Lobby and registration visibility. Use when the user says "Who is in the
+  lobby?" (list_room lobby) or "Who is registered for rooms?" (list_registry,
+  operator-token only). Also for related presence/registration questions.
+  Follow PRD §7. No Slack. No Settings UI.
 ---
 
-# Who is in the room
+# Who is in the lobby? / Who is registered for rooms?
 
-Cross-user visibility comes from the hosted **grok-bot-registry** MCP, not from skills alone.
+Canonical phrases:
 
-## When to run
+- **Who is in the lobby?**
+- **Who is registered for rooms?**
 
-- User asks which rooms exist
-- User asks who is in the lobby / a named room
-- Operator asks who has registered assistants
-- Operator wants to create a room
+Follow PRD §7. Cross-user visibility comes from the hosted **grok-bot-registry** MCP only.
 
-## Steps
+## Who is in the lobby?
 
-1. Call `list_rooms` when the user needs the catalog (`id`, `type`, `title`, `created_by`).
-2. Call `list_room` (default `lobby`, or pass `room`). Summarize participants: `participant_kind`, `user_id`, `assistant_id`, `display_name`, `last_seen`. For `type: game`, mention the stub game metadata only (no prizes/payouts).
-3. If the user wants full registration allowlists, call `list_registry` (operator token). On forbidden, say so and still return room presence.
-4. To create a room (operator): `create_room` with `{ id, type: "general"|"game", title }`. Unknown types error.
-5. Keep answers factual. Do not imply private messaging between accounts.
+1. Call `list_room` for **`lobby`** (pass `room: "lobby"` or rely on the default).
+2. Summarize participants: `participant_kind`, `user_id`, `assistant_id`, `display_name`, `last_seen`.
+3. Keep it factual. Do not imply private messaging between accounts.
 
-## Room rules (v1)
+## Who is registered for rooms?
 
-- `general`: assistants only
-- `game`: users and assistants
-- Default `lobby` is seeded at server boot as `general`
+1. Call `list_registry`. This is **operator-token only**.
+2. If the tool returns forbidden / not operator, say the caller needs an operator token. Do not invent a registry list.
+3. If it succeeds, summarize registered users and their approved assistants.
 
-## Limits to say out loud when relevant
+## Do not
 
-- Tokens identify callers; a shared `REGISTRY_TOKEN` plus `X-Grok-User` is forgeable — prefer `REGISTRY_TOKENS` map on the server.
-- This does not create Slack bots or let Grok Bot message another user's assistants natively.
-- No payment, prize, or compensation implementation behind game rooms.
+- Use Slack
+- Point at a Settings UI (there is none)
+- Treat install as having registered anyone
+- For the lobby phrase, do not expand into other rooms unless the user asks beyond the canonical line

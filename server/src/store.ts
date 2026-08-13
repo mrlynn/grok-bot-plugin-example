@@ -63,6 +63,9 @@ export type SupportedRoomCommand = (typeof SUPPORTED_ROOM_COMMANDS)[number];
 /** Canonical `/rooms`; `/list-rooms` is accepted as an alias. */
 const ROOMS_COMMAND_ALIASES = new Set(['rooms', 'list-rooms']);
 
+/** Canonical `/whos-here`; `/who` is accepted as an alias. */
+const WHOS_HERE_COMMAND_ALIASES = new Set(['whos-here', 'who']);
+
 export type PostMessageResult = {
   /** Null for directory commands like `/rooms` that are not written to a room log. */
   message: RoomMessage | null;
@@ -383,7 +386,7 @@ export class RegistryStore {
 
   /**
    * Post a room message. Bodies starting with `/` are slash commands.
-   * Supported: `/rooms` (alias `/list-rooms`), `/whos-here`, `/join [room]`, `/leave [room]`.
+   * Supported: `/rooms` (alias `/list-rooms`), `/whos-here` (alias `/who`), `/join [room]`, `/leave [room]`.
    * `/rooms` lists every created registry room and does **not** require check-in (no room log write).
    * `/join` checks the poster into the room (default lobby) then posts hello + returns presence.
    * `/leave` checks them out of that room (optional goodbye). Other posts require already checked in.
@@ -468,11 +471,16 @@ export class RegistryStore {
       command: parsed.command,
     });
 
-    if (parsed.kind === 'command' && parsed.command === 'whos-here') {
+    if (
+      parsed.kind === 'command' &&
+      parsed.command &&
+      WHOS_HERE_COMMAND_ALIASES.has(parsed.command)
+    ) {
       const listing = this.listRoom(roomId);
       return {
         message,
         command_result: {
+          // Canonical name (like /list-rooms → rooms); log message.command keeps typed form.
           command: 'whos-here',
           room: listing.room,
           participants: listing.participants,
@@ -487,7 +495,7 @@ export class RegistryStore {
         command_result: null,
         command_error: {
           code: 'unknown_command',
-          message: `Unknown room command "/${parsed.command}". Supported: /rooms, /join, /leave, /whos-here`,
+          message: `Unknown room command "/${parsed.command}". Supported: /rooms, /join, /leave, /whos-here, /who`,
         },
       };
     }

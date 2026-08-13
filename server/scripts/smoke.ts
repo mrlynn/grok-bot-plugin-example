@@ -3,8 +3,9 @@
  * 1) fresh user (no check-in) /rooms → at least lobby
  * 2) first-run welcome path: register one → check_in lobby → hello → /whos-here
  * 3) /join lobby → presence + hello + listing; /leave lobby → removed
- * 4) two users register + assistant check_in to lobby; list_room shows both
- * 5) operator create_room(game); user + assistant participants; /rooms + list_rooms include both
+ * 4) /who alias: same participants as /whos-here; unknown errors; no check-in errors
+ * 5) two users register + assistant check_in to lobby; list_room shows both
+ * 6) operator create_room(game); user + assistant participants; /rooms + list_rooms include both
  *
  * Usage (from server/):
  *   npm run smoke
@@ -40,6 +41,11 @@ async function main(): Promise<void> {
     // Clear alice helper presence so /join can re-check-in cleanly
     await callTool(TOKENS.alice, 'check_out', { assistant_id: 'alice-helper' });
     await runJoinLeaveSlashPath('alice', TOKENS.alice, {
+      id: 'alice-helper',
+      name: 'Alice Helper',
+    });
+
+    await runWhoAliasSlashPath('alice', TOKENS.alice, {
       id: 'alice-helper',
       name: 'Alice Helper',
     });
@@ -129,7 +135,9 @@ async function main(): Promise<void> {
     const registry = await callTool(TOKENS.ops, 'list_registry', {});
     console.log('list_registry:', JSON.stringify(registry, null, 2));
 
-    console.log('SMOKE OK: /rooms + first-run welcome + /join|/leave + lobby + game room');
+    console.log(
+      'SMOKE OK: /rooms + first-run welcome + /join|/leave + /who alias + lobby + game room',
+    );
   } finally {
     if (child?.pid) {
       child.kill('SIGTERM');
@@ -367,6 +375,143 @@ async function runJoinLeaveSlashPath(
   }
 
   console.log(`join/leave slash OK for ${userId}/${assistant.id}`);
+}
+
+type PresenceParticipant = {
+  user_id: string;
+  assistant_id: string | null;
+  display_name: string;
+};
+
+function participantKey(p: PresenceParticipant): string {
+  return `${p.user_id}\0${p.assistant_id ?? ''}\0${p.display_name}`;
+}
+
+function assertSameParticipants(
+  left: PresenceParticipant[],
+  right: PresenceParticipant[],
+  label: string,
+): void {
+  const leftKeys = [...left.map(participantKey)].sort();
+  const rightKeys = [...right.map(participantKey)].sort();
+  if (leftKeys.length !== rightKeys.length || leftKeys.some((k, i) => k !== rightKeys[i])) {
+    throw new Error(
+      `Expected ${label} participants to match; left=${JSON.stringify(left)} right=${JSON.stringify(right)}`,
+    );
+  }
+}
+
+/**
+ * /who is a hard alias of /whos-here: same presence listing when checked in;
+ * unknown commands still error; no check-in still errors like /whos-here.
+ */
+async function runWhoAliasSlashPath(
+  userId: string,
+  token: string,
+  assistant: { id: string; name: string },
+): Promise<void> {
+  await callTool(token, 'register_assistants', {
+    assistants: [assistant],
+    mode: 'merge',
+  });
+  await callTool(token, 'check_in', { assistant_id: assistant.id });
+
+  const whosHere = await callTool(token, 'post_message', {
+    assistant_id: assistant.id,
+    body: '/whos-here',
+  });
+  const who = await callTool(token, 'post_message', {
+    assistant_id: assistant.id,
+    body: '/who',
+  });
+
+  const whosHerePayload = whosHere as {
+    message?: { kind?: string; command?: string; body?: string };
+    command_result?: { command?: string; participants?: PresenceParticipant[] };
+  };
+  const whoPayload = who as {
+    message?: { kind?: string; command?: string; body?: string };
+    command_result?: { command?: string; participants?: PresenceParticipant[] };
+  };
+
+  if (whosHerePayload.message?.kind !== 'command' || whosHerePayload.message.command !== 'whos-here') {
+    throw new Error(`Expected /whos-here recorded as command; got: ${JSON.stringify(whosHere)}`);
+  }
+  if (whoPayload.message?.kind !== 'command' || whoPayload.message.command !== 'who') {
+    throw new Error(`Expected /who recorded as command "who"; got: ${JSON.stringify(who)}`);
+  }
+  // Canonical command_result name (same pattern as /list-rooms → rooms)
+  if (whosHerePayload.command_result?.command !== 'whos-here') {
+    throw new Error(`Expected /whos-here command_result; got: ${JSON.stringify(whosHere)}`);
+  }
+  if (whoPayload.command_result?.command !== 'whos-here') {
+    throw new Error(
+      `Expected /who command_result.command=whos-here (canonical); got: ${JSON.stringify(who)}`,
+    );
+  }
+
+  const whosHereParticipants = whosHerePayload.command_result.participants ?? [];
+  const whoParticipants = whoPayload.command_result.participants ?? [];
+  assertSameParticipants(whosHereParticipants, whoParticipants, '/who vs /whos-here');
+
+  const selfPresent = whoParticipants.some(
+    (p) => p.user_id === userId && p.assistant_id === assistant.id,
+  );
+  if (!selfPresent) {
+    throw new Error(
+      `Expected ${userId}/${assistant.id} in /who listing; got: ${JSON.stringify(whoParticipants)}`,
+    );
+  }
+
+  const messages = await callTool(token, 'list_messages', { room: 'lobby' });
+  const bodies = new Set(
+    ((messages as { messages?: Array<{ body: string; kind: string }> }).messages ?? []).map(
+      (m) => `${m.kind}:${m.body}`,
+    ),
+  );
+  if (!bodies.has('command:/who')) {
+    throw new Error(`Expected /who in list_messages; got: ${JSON.stringify(messages)}`);
+  }
+
+  const unknown = await callToolRaw(token, 'post_message', {
+    assistant_id: assistant.id,
+    body: '/say hi',
+  });
+  if (!unknown.isError) {
+    throw new Error('Expected unknown /say to error');
+  }
+  const unknownPayload = unknown.payload as { error?: string; message?: string };
+  if (unknownPayload.error !== 'unknown_command') {
+    throw new Error(`Expected unknown_command for /say; got: ${JSON.stringify(unknown.payload)}`);
+  }
+
+  await callTool(token, 'check_out', { assistant_id: assistant.id });
+
+  const whoWithoutCheckIn = await callToolRaw(token, 'post_message', {
+    assistant_id: assistant.id,
+    body: '/who',
+  });
+  const whosHereWithoutCheckIn = await callToolRaw(token, 'post_message', {
+    assistant_id: assistant.id,
+    body: '/whos-here',
+  });
+  if (!whoWithoutCheckIn.isError || !whosHereWithoutCheckIn.isError) {
+    throw new Error('Expected /who and /whos-here without check-in to error');
+  }
+  const whoErr = whoWithoutCheckIn.payload as { error?: string };
+  const whosHereErr = whosHereWithoutCheckIn.payload as { error?: string };
+  if (whoErr.error !== whosHereErr.error) {
+    throw new Error(
+      `Expected /who and /whos-here no-check-in errors to match; /who=${JSON.stringify(whoWithoutCheckIn.payload)} /whos-here=${JSON.stringify(whosHereWithoutCheckIn.payload)}`,
+    );
+  }
+  if (whoErr.error !== 'not_in_room') {
+    throw new Error(
+      `Expected not_in_room without check-in; got: ${JSON.stringify(whoWithoutCheckIn.payload)}`,
+    );
+  }
+
+  console.log(`who alias slash OK for ${userId}/${assistant.id}`);
 }
 
 async function runAsUser(

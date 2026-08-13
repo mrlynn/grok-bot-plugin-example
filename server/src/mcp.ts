@@ -24,11 +24,11 @@ function requirePrincipal(authInfo: AuthInfo | undefined): AuthPrincipal {
   return principal;
 }
 
-function requireOperator(principal: AuthPrincipal): void {
+function requireOperator(principal: AuthPrincipal, action: string): void {
   if (principal.role !== 'operator') {
     throw new RegistryError(
       'forbidden',
-      'list_registry requires an operator token (role "operator" or list scope)',
+      `${action} requires an operator token (role "operator" or list scope)`,
     );
   }
 }
@@ -36,7 +36,7 @@ function requireOperator(principal: AuthPrincipal): void {
 export function createRegistryMcpServer(store: RegistryStore, authInfo?: AuthInfo): McpServer {
   const server = new McpServer({
     name: 'grok-bot-registry',
-    version: '1.0.0',
+    version: '1.1.0',
   });
 
   server.registerTool(
@@ -72,21 +72,85 @@ export function createRegistryMcpServer(store: RegistryStore, authInfo?: AuthInf
   );
 
   server.registerTool(
+    'create_room',
+    {
+      title: 'Create room',
+      description:
+        'Operator-only. Create a room { id, type, title }. Types: general | game. Rooms are MCP common areas (not Slack / not Grok Bot chats).',
+      inputSchema: z.object({
+        id: z.string().min(1).describe('Stable room id'),
+        type: z.enum(['general', 'game']).describe('general = assistants only; game = users + assistants'),
+        title: z.string().min(1).describe('Human-readable title'),
+      }),
+    },
+    async ({ id, type, title }) => {
+      try {
+        const principal = requirePrincipal(authInfo);
+        requireOperator(principal, 'create_room');
+        const room = store.createRoom({
+          id,
+          type,
+          title,
+          createdBy: principal.userId,
+        });
+        return textResult({
+          ok: true,
+          room,
+          game: type === 'game' ? { status: 'stub', prizes: null, compensation: null } : null,
+        });
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    'list_rooms',
+    {
+      title: 'List rooms',
+      description: 'List all rooms in the registry ({ id, type, title, created_by }).',
+      inputSchema: z.object({}),
+    },
+    async () => {
+      try {
+        requirePrincipal(authInfo);
+        return textResult({ ok: true, ...store.listRooms() });
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
     'check_in',
     {
       title: 'Check in to a room',
       description:
-        'Check an allowlisted assistant into a room (default: lobby). Updates last_seen.',
+        'Check into a room (default: lobby). Assistants need assistant_id and must be allowlisted. Users may check in only to game rooms (participant_kind=user). General rooms are assistants-only.',
       inputSchema: z.object({
-        assistant_id: z.string().min(1),
         room: z.string().min(1).optional().describe(`Room id; defaults to "${DEFAULT_ROOM}"`),
+        participant_kind: z
+          .enum(['user', 'assistant'])
+          .optional()
+          .describe('Defaults to assistant when assistant_id is used'),
+        assistant_id: z
+          .string()
+          .min(1)
+          .optional()
+          .describe('Required for assistant participants'),
       }),
     },
-    async ({ assistant_id, room }) => {
+    async ({ room, participant_kind, assistant_id }) => {
       try {
         const principal = requirePrincipal(authInfo);
-        const presence = store.checkIn(principal.userId, assistant_id, room ?? DEFAULT_ROOM);
-        return textResult({ ok: true, presence });
+        const kind = participant_kind ?? (assistant_id ? 'assistant' : undefined);
+        const participant = store.checkIn({
+          userId: principal.userId,
+          roomId: room ?? DEFAULT_ROOM,
+          participantKind: kind,
+          assistantId: assistant_id,
+        });
+        return textResult({ ok: true, participant });
       } catch (error) {
         return toolError(error);
       }
@@ -97,19 +161,31 @@ export function createRegistryMcpServer(store: RegistryStore, authInfo?: AuthInf
     'check_out',
     {
       title: 'Check out of a room',
-      description: 'Remove an assistant from whatever room it is currently checked into.',
+      description:
+        'Remove this user or assistant from whatever room they are currently checked into.',
       inputSchema: z.object({
-        assistant_id: z.string().min(1),
+        participant_kind: z.enum(['user', 'assistant']).optional(),
+        assistant_id: z
+          .string()
+          .min(1)
+          .optional()
+          .describe('Required when checking out an assistant'),
       }),
     },
-    async ({ assistant_id }) => {
+    async ({ participant_kind, assistant_id }) => {
       try {
         const principal = requirePrincipal(authInfo);
-        const result = store.checkOut(principal.userId, assistant_id);
+        const kind = participant_kind ?? (assistant_id ? 'assistant' : undefined);
+        const result = store.checkOut({
+          userId: principal.userId,
+          participantKind: kind,
+          assistantId: assistant_id,
+        });
         return textResult({
           ok: true,
           user_id: principal.userId,
-          assistant_id,
+          participant_kind: kind ?? 'assistant',
+          assistant_id: assistant_id ?? null,
           ...result,
         });
       } catch (error) {
@@ -129,7 +205,7 @@ export function createRegistryMcpServer(store: RegistryStore, authInfo?: AuthInf
     async () => {
       try {
         const principal = requirePrincipal(authInfo);
-        requireOperator(principal);
+        requireOperator(principal, 'list_registry');
         return textResult({ ok: true, ...store.listRegistry() });
       } catch (error) {
         return toolError(error);
@@ -141,7 +217,7 @@ export function createRegistryMcpServer(store: RegistryStore, authInfo?: AuthInf
     'list_room',
     {
       title: 'List room presence',
-      description: `List assistants currently checked into a room (default: ${DEFAULT_ROOM}).`,
+      description: `List participants currently checked into a room (default: ${DEFAULT_ROOM}). Includes room record; game rooms also return stub game metadata (no prizes/payouts).`,
       inputSchema: z.object({
         room: z.string().min(1).optional().describe(`Room id; defaults to "${DEFAULT_ROOM}"`),
       }),

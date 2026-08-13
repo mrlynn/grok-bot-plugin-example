@@ -1,6 +1,6 @@
 # grok-bot-plugin-example
 
-Agent plugin that helps a **publisher** (or a Cursor AE/FE answering one) go from "I have an MCP server or skill" to "it appears in Grok Bot," and ships a **hosted assistant registry** so approved Grok Bot assistants can register and check into a shared default room (`lobby`) across user accounts.
+Agent plugin that helps a **publisher** (or a Cursor AE/FE answering one) go from "I have an MCP server or skill" to "it appears in Grok Bot," and ships a **hosted assistant registry** with **rooms** so approved Grok Bot assistants (and, in game rooms, users) can register and check in across accounts.
 
 Grok Bot plugins **are** Cursor plugins: same Agent Plugins manifest, same marketplace, same review pipeline. Skills alone cannot share state across accounts. The remote MCP registry is the shared store.
 
@@ -8,10 +8,23 @@ Grok Bot plugins **are** Cursor plugins: same Agent Plugins manifest, same marke
 
 Installing/configuring this plugin means: **my approved assistants may appear in the registry.**
 
+**Rooms** are common areas in the hosted MCP. They are not Slack channels and not Grok Bot group chats.
+
+Room record: `{ id, type, title, created_by }`.
+
+| Type | Who may participate | Notes |
+| --- | --- | --- |
+| `general` | Assistants only | Default room `lobby` is created at boot (`type: general`) |
+| `game` | Users **and** assistants (`participant_kind`) | Game metadata is a stub only: `{ status: "stub", prizes: null, compensation: null }`. No prizes, payouts, or payment APIs. |
+
+Unknown room types error.
+
 | Capability | Tool | Who |
 | --- | --- | --- |
 | Replace my allowlist of assistants `{ id, name }[]` | `register_assistants` | Authenticated user |
-| Check an allowlisted assistant into a room (default `lobby`) | `check_in` | Authenticated user |
+| Create a room `{ id, type, title }` | `create_room` | Operator token |
+| List rooms | `list_rooms` | Authenticated user |
+| Check into a room (default `lobby`) | `check_in` | Authenticated user (assistant and/or user per room type) |
 | Check out | `check_out` | Authenticated user |
 | See who registered which assistants | `list_registry` | Operator token |
 | See who is currently in a room | `list_room` | Authenticated user |
@@ -38,6 +51,7 @@ plugin.json          # Agent Plugins manifest + variables schema
 mcp.json             # Remote Streamable HTTP registry (${REGISTRY_URL}, ${REGISTRY_TOKEN})
 skills/              # Publisher skills + registry skills
 server/              # Hosted MCP registry (Node, Streamable HTTP, SQLite)
+docs/                # Short PRD / SPEC for the submission + registry path
 README.md
 LICENSE
 .gitignore
@@ -85,14 +99,14 @@ Health check:
 curl -s http://127.0.0.1:8787/healthz
 ```
 
-### Smoke test (two users in `lobby`)
+### Smoke test (lobby + game room)
 
 ```bash
 cd server
-SMOKE_SPAWN=1 npm run smoke
+npm run smoke
 ```
 
-This registers + checks in as `alice` and `bob`, then asserts `list_room` includes both user ids. You can also point MCP Inspector at `http://127.0.0.1:8787/mcp` with `Authorization: Bearer <token>`.
+This registers + checks assistants into `lobby` as `alice` and `bob`, creates a `game` room, checks in a user + assistant there, and asserts `list_room` / `list_rooms`. You can also point MCP Inspector at `http://127.0.0.1:8787/mcp` with `Authorization: Bearer <token>`.
 
 ### Manual curl-shaped JSON-RPC (legacy Streamable HTTP)
 

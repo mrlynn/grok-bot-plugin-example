@@ -1,12 +1,10 @@
 /**
- * Local smoke: two users register + check_in; list_room shows both user ids.
+ * Local smoke:
+ * 1) two users register + assistant check_in to lobby; list_room shows both
+ * 2) operator create_room(game); user + assistant participants; list_rooms
  *
  * Usage (from server/):
- *   npm start   # terminal 1
  *   npm run smoke
- *
- * Or let this script spawn the server itself:
- *   SMOKE_SPAWN=1 npm run smoke
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -33,22 +31,78 @@ async function main(): Promise<void> {
     ]);
     await runAsUser('bob', TOKENS.bob, [{ id: 'bob-helper', name: 'Bob Helper' }]);
 
-    const room = await callTool(TOKENS.ops, 'list_room', {});
-    const present = (room as { present?: Array<{ user_id: string }> }).present ?? [];
-    const userIds = new Set(present.map((p) => p.user_id));
+    const lobby = await callTool(TOKENS.ops, 'list_room', {});
+    const lobbyParticipants =
+      (lobby as { participants?: Array<{ user_id: string; participant_kind: string }> })
+        .participants ?? [];
+    const lobbyUserIds = new Set(
+      lobbyParticipants
+        .filter((p) => p.participant_kind === 'assistant')
+        .map((p) => p.user_id),
+    );
 
-    console.log('list_room present:', JSON.stringify(present, null, 2));
+    console.log('list_room lobby:', JSON.stringify(lobby, null, 2));
 
-    if (!userIds.has('alice') || !userIds.has('bob')) {
+    if (!lobbyUserIds.has('alice') || !lobbyUserIds.has('bob')) {
       throw new Error(
-        `Expected user ids alice and bob in lobby; got: ${[...userIds].join(', ') || '(none)'}`,
+        `Expected assistant owners alice and bob in lobby; got: ${[...lobbyUserIds].join(', ') || '(none)'}`,
       );
+    }
+
+    const roomsBefore = await callTool(TOKENS.ops, 'list_rooms', {});
+    console.log('list_rooms:', JSON.stringify(roomsBefore, null, 2));
+    const roomIds = new Set(
+      ((roomsBefore as { rooms?: Array<{ id: string }> }).rooms ?? []).map((r) => r.id),
+    );
+    if (!roomIds.has('lobby')) {
+      throw new Error('Expected default lobby room from boot');
+    }
+
+    const created = await callTool(TOKENS.ops, 'create_room', {
+      id: 'arena-1',
+      type: 'game',
+      title: 'Arena One',
+    });
+    console.log('create_room:', JSON.stringify(created, null, 2));
+
+    // Game rooms: user participant (alice) + assistant participant (bob's helper)
+    await callTool(TOKENS.alice, 'check_in', {
+      room: 'arena-1',
+      participant_kind: 'user',
+    });
+    await callTool(TOKENS.bob, 'check_in', {
+      room: 'arena-1',
+      assistant_id: 'bob-helper',
+    });
+
+    const arena = await callTool(TOKENS.ops, 'list_room', { room: 'arena-1' });
+    console.log('list_room arena-1:', JSON.stringify(arena, null, 2));
+    const kinds = new Set(
+      ((arena as { participants?: Array<{ participant_kind: string }> }).participants ?? []).map(
+        (p) => p.participant_kind,
+      ),
+    );
+    if (!kinds.has('user') || !kinds.has('assistant')) {
+      throw new Error(`Expected user and assistant participants in game room; got: ${[...kinds]}`);
+    }
+    const game = (arena as { game?: { status?: string } }).game;
+    if (game?.status !== 'stub') {
+      throw new Error(`Expected game metadata stub, got: ${JSON.stringify(game)}`);
+    }
+
+    // General rooms reject user participants
+    const rejected = await callToolRaw(TOKENS.alice, 'check_in', {
+      room: 'lobby',
+      participant_kind: 'user',
+    });
+    if (!rejected.isError) {
+      throw new Error('Expected user check_in to general lobby to fail');
     }
 
     const registry = await callTool(TOKENS.ops, 'list_registry', {});
     console.log('list_registry:', JSON.stringify(registry, null, 2));
 
-    console.log('SMOKE OK: lobby contains alice and bob');
+    console.log('SMOKE OK: lobby + game room rooms/participants');
   } finally {
     if (child?.pid) {
       child.kill('SIGTERM');
@@ -63,7 +117,7 @@ async function runAsUser(
 ): Promise<void> {
   await callTool(token, 'register_assistants', { assistants });
   await callTool(token, 'check_in', { assistant_id: assistants[0].id });
-  console.log(`checked in ${userId}/${assistants[0].id}`);
+  console.log(`checked in ${userId}/${assistants[0].id} -> lobby`);
 }
 
 async function callTool(
@@ -71,6 +125,18 @@ async function callTool(
   name: string,
   args: Record<string, unknown>,
 ): Promise<unknown> {
+  const result = await callToolRaw(token, name, args);
+  if (result.isError) {
+    throw new Error(`Tool ${name} returned error: ${JSON.stringify(result.payload)}`);
+  }
+  return result.payload;
+}
+
+async function callToolRaw(
+  token: string,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<{ isError: boolean; payload: unknown }> {
   const transport = new StreamableHTTPClientTransport(new URL(`${BASE}/mcp`), {
     requestInit: {
       headers: {
@@ -82,14 +148,12 @@ async function callTool(
   try {
     await client.connect(transport);
     const result = await client.callTool({ name, arguments: args });
-    if (result.isError) {
-      throw new Error(`Tool ${name} returned error: ${JSON.stringify(result)}`);
-    }
     const text = result.content?.find((c) => c.type === 'text');
-    if (text && text.type === 'text') {
-      return JSON.parse(text.text);
-    }
-    return result.structuredContent ?? result;
+    const payload =
+      text && text.type === 'text'
+        ? JSON.parse(text.text)
+        : (result.structuredContent ?? result);
+    return { isError: Boolean(result.isError), payload };
   } finally {
     await client.close().catch(() => undefined);
     await transport.close().catch(() => undefined);

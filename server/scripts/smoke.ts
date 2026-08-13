@@ -1,8 +1,9 @@
 /**
  * Local smoke:
  * 1) first-run welcome path: register one → check_in lobby → hello → /whos-here
- * 2) two users register + assistant check_in to lobby; list_room shows both
- * 3) operator create_room(game); user + assistant participants; list_rooms
+ * 2) /join lobby → presence + hello + listing; /leave lobby → removed
+ * 3) two users register + assistant check_in to lobby; list_room shows both
+ * 4) operator create_room(game); user + assistant participants; list_rooms
  *
  * Usage (from server/):
  *   npm run smoke
@@ -32,7 +33,20 @@ async function main(): Promise<void> {
       name: 'Alice Helper',
     });
 
+    // Clear alice helper presence so /join can re-check-in cleanly
+    await callTool(TOKENS.alice, 'check_out', { assistant_id: 'alice-helper' });
+    await runJoinLeaveSlashPath('alice', TOKENS.alice, {
+      id: 'alice-helper',
+      name: 'Alice Helper',
+    });
+
     await runAsUser('bob', TOKENS.bob, [{ id: 'bob-helper', name: 'Bob Helper' }]);
+    // Re-join alice so lobby still has both owners for the cross-user assertion
+    await callTool(TOKENS.alice, 'register_assistants', {
+      assistants: [{ id: 'alice-helper', name: 'Alice Helper' }],
+      mode: 'merge',
+    });
+    await callTool(TOKENS.alice, 'check_in', { assistant_id: 'alice-helper' });
 
     const lobby = await callTool(TOKENS.ops, 'list_room', {});
     const lobbyParticipants =
@@ -105,7 +119,7 @@ async function main(): Promise<void> {
     const registry = await callTool(TOKENS.ops, 'list_registry', {});
     console.log('list_registry:', JSON.stringify(registry, null, 2));
 
-    console.log('SMOKE OK: first-run welcome + lobby + game room rooms/participants');
+    console.log('SMOKE OK: first-run welcome + /join|/leave + lobby + game room');
   } finally {
     if (child?.pid) {
       child.kill('SIGTERM');
@@ -185,6 +199,110 @@ async function runFirstRunWelcomePath(
   }
 
   console.log(`first-run welcome OK for ${userId}/${assistant.id}`);
+}
+
+/**
+ * Mirrors skills/rooms-slash-commands: merge-register → /join lobby → assert
+ * presence + hello + listing; /leave lobby → assert checked out + goodbye.
+ */
+async function runJoinLeaveSlashPath(
+  userId: string,
+  token: string,
+  assistant: { id: string; name: string },
+): Promise<void> {
+  await callTool(token, 'register_assistants', {
+    assistants: [assistant],
+    mode: 'merge',
+  });
+
+  const join = await callTool(token, 'post_message', {
+    assistant_id: assistant.id,
+    body: '/join lobby',
+  });
+  const joinPayload = join as {
+    message?: { kind?: string; command?: string; body?: string };
+    command_result?: {
+      command?: string;
+      hello?: { body?: string; kind?: string };
+      participants?: Array<{ user_id: string; assistant_id: string | null }>;
+    };
+  };
+  if (joinPayload.message?.kind !== 'command' || joinPayload.message?.command !== 'join') {
+    throw new Error(`Expected /join recorded as command; got: ${JSON.stringify(join)}`);
+  }
+  if (joinPayload.command_result?.command !== 'join') {
+    throw new Error(`Expected /join command_result; got: ${JSON.stringify(join)}`);
+  }
+  const helloBody = `Hello, ${assistant.name} here.`;
+  if (joinPayload.command_result.hello?.body !== helloBody) {
+    throw new Error(`Expected auto hello from /join; got: ${JSON.stringify(join)}`);
+  }
+  const joined = (joinPayload.command_result.participants ?? []).some(
+    (p) => p.user_id === userId && p.assistant_id === assistant.id,
+  );
+  if (!joined) {
+    throw new Error(
+      `Expected ${userId}/${assistant.id} in /join listing; got: ${JSON.stringify(joinPayload.command_result.participants)}`,
+    );
+  }
+
+  const lobbyAfterJoin = await callTool(token, 'list_room', { room: 'lobby' });
+  const presentAfterJoin = (
+    (lobbyAfterJoin as { participants?: Array<{ user_id: string; assistant_id: string | null }> })
+      .participants ?? []
+  ).some((p) => p.user_id === userId && p.assistant_id === assistant.id);
+  if (!presentAfterJoin) {
+    throw new Error(`Expected list_room lobby to include ${userId}/${assistant.id} after /join`);
+  }
+
+  const leave = await callTool(token, 'post_message', {
+    assistant_id: assistant.id,
+    body: '/leave lobby',
+  });
+  const leavePayload = leave as {
+    message?: { kind?: string; command?: string };
+    command_result?: {
+      command?: string;
+      checked_out?: boolean;
+      goodbye?: { body?: string; kind?: string };
+      participants?: unknown;
+    };
+  };
+  if (leavePayload.message?.kind !== 'command' || leavePayload.message?.command !== 'leave') {
+    throw new Error(`Expected /leave recorded as command; got: ${JSON.stringify(leave)}`);
+  }
+  if (
+    leavePayload.command_result?.command !== 'leave' ||
+    leavePayload.command_result.checked_out !== true
+  ) {
+    throw new Error(`Expected /leave checked_out; got: ${JSON.stringify(leave)}`);
+  }
+  if (leavePayload.command_result.participants !== undefined) {
+    throw new Error(`Expected /leave not to dump participants; got: ${JSON.stringify(leave)}`);
+  }
+  const goodbyeBody = `Goodbye, ${assistant.name} leaving.`;
+  if (leavePayload.command_result.goodbye?.body !== goodbyeBody) {
+    throw new Error(`Expected goodbye from /leave; got: ${JSON.stringify(leave)}`);
+  }
+
+  const lobbyAfterLeave = await callTool(token, 'list_room', { room: 'lobby' });
+  const stillPresent = (
+    (lobbyAfterLeave as { participants?: Array<{ user_id: string; assistant_id: string | null }> })
+      .participants ?? []
+  ).some((p) => p.user_id === userId && p.assistant_id === assistant.id);
+  if (stillPresent) {
+    throw new Error(`Expected ${userId}/${assistant.id} gone from lobby after /leave`);
+  }
+
+  const missingRoom = await callToolRaw(token, 'post_message', {
+    assistant_id: assistant.id,
+    body: '/join no-such-room',
+  });
+  if (!missingRoom.isError) {
+    throw new Error('Expected /join no-such-room to fail');
+  }
+
+  console.log(`join/leave slash OK for ${userId}/${assistant.id}`);
 }
 
 async function runAsUser(

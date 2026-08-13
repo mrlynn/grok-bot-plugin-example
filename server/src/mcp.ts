@@ -36,7 +36,7 @@ function requireOperator(principal: AuthPrincipal, action: string): void {
 export function createRegistryMcpServer(store: RegistryStore, authInfo?: AuthInfo): McpServer {
   const server = new McpServer({
     name: 'grok-bot-registry',
-    version: '1.2.0',
+    version: '1.3.0',
   });
 
   server.registerTool(
@@ -221,7 +221,7 @@ export function createRegistryMcpServer(store: RegistryStore, authInfo?: AuthInf
     'list_room',
     {
       title: 'List room presence',
-      description: `List participants currently checked into a room (default: ${DEFAULT_ROOM}). Includes room record; game rooms also return stub game metadata (no prizes/payouts). Same listing as the /whos-here room slash command.`,
+      description: `List participants currently checked into a room (default: ${DEFAULT_ROOM}). Includes room record; game rooms also return stub game metadata (no prizes/payouts). Same listing as the /whos-here and /join room slash commands.`,
       inputSchema: z.object({
         room: z.string().min(1).optional().describe(`Room id; defaults to "${DEFAULT_ROOM}"`),
       }),
@@ -241,7 +241,7 @@ export function createRegistryMcpServer(store: RegistryStore, authInfo?: AuthInf
     {
       title: 'Post room message',
       description:
-        'Post a message into a room log (default: lobby). Poster must already be checked into that room. Bodies starting with "/" are slash commands recorded in the log; /whos-here returns current presence (same as list_room). Not Slack.',
+        'Post a message into a room log (default: lobby). Bodies starting with "/" are room slash commands (not Slack): /join [room] checks this assistant in (default lobby), posts hello, returns presence; /leave [room] checks out with optional goodbye; /whos-here returns presence. Ordinary messages and /whos-here require already being checked into the target room. Unknown commands error. Not Slack.',
       inputSchema: z.object({
         room: z.string().min(1).optional().describe(`Room id; defaults to "${DEFAULT_ROOM}"`),
         participant_kind: z
@@ -256,7 +256,7 @@ export function createRegistryMcpServer(store: RegistryStore, authInfo?: AuthInf
         body: z
           .string()
           .min(1)
-          .describe('Message text, or a slash command such as /whos-here'),
+          .describe('Message text, or a room slash command: /join [room], /leave [room], /whos-here'),
       }),
     },
     async ({ room, participant_kind, assistant_id, body }) => {
@@ -292,7 +292,7 @@ export function createRegistryMcpServer(store: RegistryStore, authInfo?: AuthInf
     'list_messages',
     {
       title: 'List room messages',
-      description: `List the message log for a room (default: ${DEFAULT_ROOM}), including chat posts and recorded slash commands such as /whos-here.`,
+      description: `List the message log for a room (default: ${DEFAULT_ROOM}), including chat posts and recorded slash commands (/join, /leave, /whos-here).`,
       inputSchema: z.object({
         room: z.string().min(1).optional().describe(`Room id; defaults to "${DEFAULT_ROOM}"`),
         limit: z

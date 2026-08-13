@@ -2,10 +2,11 @@
 name: check-into-lobby
 description: >-
   Lobby presence for approved assistants. Use when the user says "Check into the
-  lobby" or "Check out of the lobby" (canonical), or asks this assistant to
-  announce or leave lobby presence. Refuses unapproved ids with the PRD §7
-  refusal line. Defaults to room lobby. Install does not silent-join; first chat
-  may prompt via welcome-to-lobby.
+  lobby" or "Check out of the lobby" (canonical phrases). For literal /join or
+  /leave slash commands, use rooms-slash-commands instead (hard registry room
+  commands; this assistant only; default lobby). Refuses unapproved ids with the
+  PRD §7 refusal line. Install does not silent-join; first chat may prompt via
+  welcome-to-lobby.
 ---
 
 # Check into / out of the lobby
@@ -16,6 +17,8 @@ Canonical phrases:
 - **Check out of the lobby**
 
 Follow PRD §7. Default room id is **`lobby`**. Rooms are MCP common areas (not Slack, not Grok Bot group chats). Install does not silent-check anyone in; first chat may **prompt** via `welcome-to-lobby` (PRD §7.7).
+
+If the user typed **`/join`** or **`/leave`** (optional room id), hand off to `rooms-slash-commands` — do not ask which teammate, and do not treat it as a natural-language check-in prompt.
 
 ## Check into the lobby
 

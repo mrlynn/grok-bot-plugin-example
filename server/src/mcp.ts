@@ -36,7 +36,7 @@ function requireOperator(principal: AuthPrincipal, action: string): void {
 export function createRegistryMcpServer(store: RegistryStore, authInfo?: AuthInfo): McpServer {
   const server = new McpServer({
     name: 'grok-bot-registry',
-    version: '1.1.0',
+    version: '1.2.0',
   });
 
   server.registerTool(
@@ -44,7 +44,7 @@ export function createRegistryMcpServer(store: RegistryStore, authInfo?: AuthInf
     {
       title: 'Register assistants',
       description:
-        'Replace the authenticated user allowlist of approved assistants { id, name }[]. Does not check them into a room.',
+        'Update the authenticated user allowlist of approved assistants { id, name }[]. Default mode "replace" replaces the whole allowlist. Mode "merge" upserts the given assistants without removing others. Does not check them into a room.',
       inputSchema: z.object({
         assistants: z
           .array(
@@ -53,13 +53,17 @@ export function createRegistryMcpServer(store: RegistryStore, authInfo?: AuthInf
               name: z.string().min(1).describe('Display name'),
             }),
           )
-          .describe('Full replacement allowlist for this user'),
+          .describe('Assistants to register (replace = full allowlist; merge = upsert these)'),
+        mode: z
+          .enum(['replace', 'merge'])
+          .optional()
+          .describe('replace (default) or merge (upsert without wiping others)'),
       }),
     },
-    async ({ assistants }) => {
+    async ({ assistants, mode }) => {
       try {
         const principal = requirePrincipal(authInfo);
-        const result = store.registerAssistants(principal.userId, assistants);
+        const result = store.registerAssistants(principal.userId, assistants, mode ?? 'replace');
         return textResult({
           ok: true,
           user_id: principal.userId,
@@ -217,7 +221,7 @@ export function createRegistryMcpServer(store: RegistryStore, authInfo?: AuthInf
     'list_room',
     {
       title: 'List room presence',
-      description: `List participants currently checked into a room (default: ${DEFAULT_ROOM}). Includes room record; game rooms also return stub game metadata (no prizes/payouts).`,
+      description: `List participants currently checked into a room (default: ${DEFAULT_ROOM}). Includes room record; game rooms also return stub game metadata (no prizes/payouts). Same listing as the /whos-here room slash command.`,
       inputSchema: z.object({
         room: z.string().min(1).optional().describe(`Room id; defaults to "${DEFAULT_ROOM}"`),
       }),
@@ -226,6 +230,87 @@ export function createRegistryMcpServer(store: RegistryStore, authInfo?: AuthInf
       try {
         requirePrincipal(authInfo);
         return textResult({ ok: true, ...store.listRoom(room ?? DEFAULT_ROOM) });
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    'post_message',
+    {
+      title: 'Post room message',
+      description:
+        'Post a message into a room log (default: lobby). Poster must already be checked into that room. Bodies starting with "/" are slash commands recorded in the log; /whos-here returns current presence (same as list_room). Not Slack.',
+      inputSchema: z.object({
+        room: z.string().min(1).optional().describe(`Room id; defaults to "${DEFAULT_ROOM}"`),
+        participant_kind: z
+          .enum(['user', 'assistant'])
+          .optional()
+          .describe('Defaults to assistant when assistant_id is used'),
+        assistant_id: z
+          .string()
+          .min(1)
+          .optional()
+          .describe('Required when posting as an assistant'),
+        body: z
+          .string()
+          .min(1)
+          .describe('Message text, or a slash command such as /whos-here'),
+      }),
+    },
+    async ({ room, participant_kind, assistant_id, body }) => {
+      try {
+        const principal = requirePrincipal(authInfo);
+        const kind = participant_kind ?? (assistant_id ? 'assistant' : undefined);
+        const result = store.postMessage({
+          userId: principal.userId,
+          roomId: room ?? DEFAULT_ROOM,
+          participantKind: kind,
+          assistantId: assistant_id,
+          body,
+        });
+        if (result.command_error) {
+          return textResult(
+            {
+              ok: false,
+              error: result.command_error.code,
+              message: result.command_error.message,
+              posted: result.message,
+            },
+            true,
+          );
+        }
+        return textResult({ ok: true, ...result });
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    'list_messages',
+    {
+      title: 'List room messages',
+      description: `List the message log for a room (default: ${DEFAULT_ROOM}), including chat posts and recorded slash commands such as /whos-here.`,
+      inputSchema: z.object({
+        room: z.string().min(1).optional().describe(`Room id; defaults to "${DEFAULT_ROOM}"`),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .optional()
+          .describe('Max messages to return (default 100, max 500)'),
+      }),
+    },
+    async ({ room, limit }) => {
+      try {
+        requirePrincipal(authInfo);
+        return textResult({
+          ok: true,
+          ...store.listMessages({ roomId: room ?? DEFAULT_ROOM, limit }),
+        });
       } catch (error) {
         return toolError(error);
       }

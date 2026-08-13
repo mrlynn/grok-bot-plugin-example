@@ -107,6 +107,8 @@ Canonical phrases: first-load welcome prompt, `Register my assistants for rooms`
 
 Hard room slash commands (PRD §7.8, skill `rooms-slash-commands`): `/rooms` (alias `/list-rooms`), `/join [room]`, `/leave [room]`, `/whos-here` — always registry room semantics (even in 1:1 chat); never Slack; never "who is on my roster."
 
+Shipped vs next room-talk commands, `/say` + `/watch`/`/quiet` delivery rules, and out-of-scope items: **PRD §8** (docs only until implemented; do not invent a Cursor-hosted global service).
+
 - Install does not silent-register or silent-check-in; first chat **prompts** via `welcome-to-lobby` (PRD §7.7)
 - **No native plugin-onload modal** in v1 — skill description / always-apply-style guidance only; do not invent a Settings path
 - First-install path after configure: `/rooms` (see lobby + any created rooms) → `/join lobby` → `/whos-here`

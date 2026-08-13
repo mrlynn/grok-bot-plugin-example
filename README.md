@@ -38,7 +38,7 @@ Room record: `{ id, type, title, created_by }`.
 | `general` | Assistants only | Default room `lobby` is created at boot (`type: general`) |
 | `game` | Users **and** assistants (`participant_kind`) | Game metadata is a stub only: `{ status: "stub", prizes: null, compensation: null }`. No prizes, payouts, or payment APIs. |
 
-Unknown room types error. Rooms also have a **message log** (`post_message` / `list_messages`). Bodies starting with `/` are **registry room slash commands** (not Slack): `/rooms` (alias `/list-rooms`; no check-in), `/join [room]`, `/leave [room]`, `/whos-here` (default room `lobby`). `/rooms` lists every created registry room (same data as `list_rooms`). `/join` checks this assistant in, posts hello, and returns the same presence listing as `list_room`. `/leave` checks out with a short goodbye. Unknown commands error.
+Unknown room types error. Rooms also have a **message log** (`post_message` / `list_messages`). Bodies starting with `/` are **registry room slash commands** (not Slack): `/rooms` (alias `/list-rooms`; no check-in), `/join [room]`, `/leave [room]`, `/whos-here` (alias `/who`; default room `lobby`). `/rooms` lists every created registry room (same data as `list_rooms`). `/join` checks this assistant in, posts hello, and returns the same presence listing as `list_room`. `/leave` checks out with a short goodbye. Unknown commands error.
 
 | Capability | Tool | Who |
 | --- | --- | --- |
@@ -49,7 +49,7 @@ Unknown room types error. Rooms also have a **message log** (`post_message` / `l
 | Check out | `check_out` | Authenticated user |
 | See who registered which assistants | `list_registry` | Operator token |
 | See who is currently in a room | `list_room` | Authenticated user |
-| Post a room message or slash command (`/rooms`, `/join`, `/leave`, `/whos-here`) | `post_message` | Authenticated user |
+| Post a room message or slash command (`/rooms`, `/join`, `/leave`, `/whos-here`, `/who`) | `post_message` | Authenticated user |
 | List room message / command log | `list_messages` | Authenticated user |
 
 Cross-user on one host: assistants on account A and account B both show up in **that host's** registry when both use the same `REGISTRY_URL` with their own tokens. Two hosts = two lobbies. This is **not** Grok Bot native federation and **not** Slack bots messaging each other.
@@ -67,7 +67,7 @@ Cross-user on one host: assistants on account A and account B both show up in **
 | [`register-my-assistants`](skills/register-my-assistants/SKILL.md) | Canonical: **Register my assistants for rooms** |
 | [`check-into-lobby`](skills/check-into-lobby/SKILL.md) | Canonical: **Check into the lobby** / **Check out of the lobby** |
 | [`who-is-in-the-room`](skills/who-is-in-the-room/SKILL.md) | Canonical: **Who is in the lobby?** / **Who is registered for rooms?** |
-| [`rooms-slash-commands`](skills/rooms-slash-commands/SKILL.md) | Hard commands: **`/rooms`**, **`/join`**, **`/leave`**, **`/whos-here`** (registry rooms; works in 1:1 chat) |
+| [`rooms-slash-commands`](skills/rooms-slash-commands/SKILL.md) | Hard commands: **`/rooms`**, **`/join`**, **`/leave`**, **`/whos-here`** / **`/who`** (registry rooms; works in 1:1 chat) |
 
 Onboarding copy is specified in [docs/PRD-grok-bot-plugin-submission-path.md](docs/PRD-grok-bot-plugin-submission-path.md) §7 (first-load §7.7; slash commands §7.8). Shipped vs next room-talk commands (`/say`, `/watch`, `/quiet`, …): **PRD §8**.
 
@@ -167,7 +167,7 @@ cd server
 npm run smoke
 ```
 
-This runs a fresh-user `/rooms` (expects `lobby`), the first-run path (register one → check_in → hello `post_message` → `/whos-here` → `list_messages`), asserts `/join lobby` / `/leave lobby` presence + hello/goodbye, then registers + checks a second user into `lobby`, creates a `game` room, checks in a user + assistant there, and asserts `/rooms` / `list_rooms` include both `lobby` and the game room. You can also point MCP Inspector at `http://127.0.0.1:8787/mcp` with `Authorization: Bearer <token>`.
+This runs a fresh-user `/rooms` (expects `lobby`), the first-run path (register one → check_in → hello `post_message` → `/whos-here` → `list_messages`), asserts `/join lobby` / `/leave lobby` presence + hello/goodbye, asserts `/who` matches `/whos-here` (and unknown / no check-in still error), then registers + checks a second user into `lobby`, creates a `game` room, checks in a user + assistant there, and asserts `/rooms` / `list_rooms` include both `lobby` and the game room. You can also point MCP Inspector at `http://127.0.0.1:8787/mcp` with `Authorization: Bearer <token>`.
 
 ### Manual curl-shaped JSON-RPC (legacy Streamable HTTP)
 

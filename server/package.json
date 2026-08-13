@@ -2,7 +2,7 @@
   "name": "grok-bot-registry-mcp",
   "version": "1.3.0",
   "private": true,
-  "description": "Hosted MCP registry for approved Grok Bot assistants, typed rooms (general/game, lobby default), and room slash commands (/rooms, /join, /leave, /whos-here)",
+  "description": "Hosted MCP registry for approved Grok Bot assistants, typed rooms (general/game, lobby default), and room slash commands (/rooms, /join, /leave, /whos-here, /who)",
   "type": "module",
   "scripts": {
     "start": "node --experimental-strip-types src/index.ts",

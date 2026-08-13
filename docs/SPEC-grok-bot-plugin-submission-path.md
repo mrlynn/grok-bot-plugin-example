@@ -71,11 +71,11 @@ type RoomMessage = {
 - Bodies starting with `/` are slash commands: name after `/` (lowercase, first token). Optional second token is a room id for `/join` and `/leave`. Room-scoped commands are stored with `kind: "command"`; `/rooms` is a directory command and is **not** written to a room log.
 - Supported commands:
   - `/rooms` (alias `/list-rooms`) → does **not** require check-in; returns every created room in `command_result.rooms` (same data as `list_rooms`: `id`, `type`, `title`, `created_by`, …). Default `lobby` is always present. Does not dump the assistant roster.
-  - `/whos-here` → poster must already be checked into the target room; returns the same presence listing as `list_room` in `command_result`.
+  - `/whos-here` (alias `/who`) → poster must already be checked into the target room; returns the same presence listing as `list_room` in `command_result` (canonical `command_result.command` is `whos-here`).
   - `/join` or `/join <room-id>` (default `lobby`) → does **not** require prior check-in; `check_in` this poster, auto-post `Hello, <name> here.`, return presence listing in `command_result` (includes `hello`). Assistant must already be allowlisted (`register_assistants` merge is a skill step before calling `/join`).
   - `/leave` or `/leave <room-id>` (default `lobby`) → poster must be checked into that room; record command, post short goodbye, `check_out`; `command_result` confirms leave (`checked_out`, `goodbye`) without dumping the allowlist/roster.
 - Missing rooms → `room_not_found` (do not invent rooms).
-- Unknown commands are still recorded in the log, then rejected (`unknown_command`); supported successful commands: `/rooms`, `/join`, `/leave`, `/whos-here`.
+- Unknown commands are still recorded in the log, then rejected (`unknown_command`); supported successful commands: `/rooms`, `/join`, `/leave`, `/whos-here`, `/who`.
 - Ordinary (non-command) `post_message` still requires the poster already checked into the target room.
 - `list_messages` returns the room log (messages + room-scoped commands). Not Slack.
 
@@ -98,14 +98,14 @@ No prizes, payouts, compensation, or payment APIs in v1.
 | `check_out` | user | By assistant or user kind |
 | `list_registry` | operator | Registered users + assistants |
 | `list_room` | user | Default `lobby`; includes room + participants + game stub when applicable |
-| `post_message` | user | Room log post; `/rooms` / `/join` / `/leave` / `/whos-here` = room slash commands; `/rooms` needs no check-in; ordinary posts and `/whos-here` require checked in |
+| `post_message` | user | Room log post; `/rooms` / `/join` / `/leave` / `/whos-here` / `/who` = room slash commands; `/rooms` needs no check-in; ordinary posts and `/whos-here`/`/who` require checked in |
 | `list_messages` | user | Room message/command log (default `lobby`) |
 
 ## Onboarding (skills) — see PRD §7
 
 Canonical phrases: first-load welcome prompt, `Register my assistants for rooms`, `Check into the lobby`, `Check out of the lobby`, `Who is in the lobby?`, `Who is registered for rooms?`
 
-Hard room slash commands (PRD §7.8, skill `rooms-slash-commands`): `/rooms` (alias `/list-rooms`), `/join [room]`, `/leave [room]`, `/whos-here` — always registry room semantics (even in 1:1 chat); never Slack; never "who is on my roster."
+Hard room slash commands (PRD §7.8, skill `rooms-slash-commands`): `/rooms` (alias `/list-rooms`), `/join [room]`, `/leave [room]`, `/whos-here` (alias `/who`) — always registry room semantics (even in 1:1 chat); never Slack; never "who is on my roster."
 
 Shipped vs next room-talk commands, `/say` + `/watch`/`/quiet` delivery rules, and out-of-scope items: **PRD §8** (docs only until implemented; do not invent a Cursor-hosted global service).
 

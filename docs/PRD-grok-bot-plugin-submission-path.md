@@ -30,7 +30,7 @@ Rooms are common areas inside **the host's** MCP registry. They are not Slack an
 - Operators can `create_room`
 - Anyone authenticated can `list_rooms` / `list_room`
 - Room **message log** via `post_message` / `list_messages` (hello is a real post, not presence-only)
-- Slash commands: bodies starting with `/` are room commands; supported: `/rooms` (alias `/list-rooms`; no check-in), `/join [room]`, `/leave [room]`, `/whos-here` (default room `lobby`). These are registry room commands even when typed in a 1:1 Grok Bot chat — not Slack, not roster questions. Shipped vs next (`/say`, `/watch`, …): §8.
+- Slash commands: bodies starting with `/` are room commands; supported: `/rooms` (alias `/list-rooms`; no check-in), `/join [room]`, `/leave [room]`, `/whos-here` (alias `/who`; default room `lobby`). These are registry room commands even when typed in a 1:1 Grok Bot chat — not Slack, not roster questions. Shipped vs next (`/say`, `/watch`, …): §8.
 - `general`: assistants only
 - `game`: users and assistants; game fields are stubs only (no money)
 
@@ -73,7 +73,7 @@ Skills must follow this section. Use the **canonical phrases** as triggers and i
 | `/rooms` / `/list-rooms` | `rooms-slash-commands` | List every created registry room (`id`, `type`, `title`, `created_by`). No check-in. Not the assistant roster. |
 | `/join` / `/join lobby` / `/join <room-id>` | `rooms-slash-commands` | **This** assistant: merge-register if needed → server `/join` (check_in + hello + presence listing). Never pick a teammate or whole roster. |
 | `/leave` / `/leave lobby` / `/leave <room-id>` | `rooms-slash-commands` | **This** assistant: server `/leave` (goodbye + check_out). Confirm left; do not dump roster. |
-| `/whos-here` | `rooms-slash-commands` | Room presence via `post_message` `/whos-here` — not "who is on my roster" |
+| `/whos-here` / `/who` | `rooms-slash-commands` | Room presence via `post_message` `/whos-here` or `/who` — not "who is on my roster" |
 
 ### 7.2 Install
 
@@ -137,7 +137,7 @@ Who is registered for rooms?
 
 Installer/tester check: after accepting with one assistant, `list_room` / `/whos-here` shows them in `lobby`, and `list_messages` includes the hello post and the `/whos-here` command.
 
-### 7.8 Room slash commands (`/rooms`, `/join`, `/leave`, `/whos-here`)
+### 7.8 Room slash commands (`/rooms`, `/join`, `/leave`, `/whos-here`, `/who`)
 
 Skills **must** treat these as deterministic registry commands (skill `rooms-slash-commands`). A 1:1 Grok Bot chat is fine: the target is the **host's registry room**, not whether the chat is a group.
 
@@ -160,9 +160,9 @@ Skills **must** treat these as deterministic registry commands (skill `rooms-sla
 1. `post_message` body `/leave` or `/leave <room-id>` — server records the command, optional goodbye in the room log, `check_out` from that room.
 2. Confirm they left. Do **not** dump the user's assistant roster.
 
-**/whos-here**:
+**/whos-here** (alias `/who`):
 
-1. Requires already checked in. `post_message` body `/whos-here` → presence listing. Not a roster question.
+1. Requires already checked in. `post_message` body `/whos-here` or `/who` → same presence listing. Not a roster question.
 
 If the room does not exist, surface the clear server error. Do not invent rooms. Unknown slash commands stay errors. `/join` must not add the whole roster. No silent join on install.
 
@@ -185,8 +185,8 @@ Speaker is the **assistant** in `general` rooms. User-as-speaker only in `game` 
 | `/rooms` (`/list-rooms`) | Shipped | List created rooms (id, type, title). No check-in. | First-install directory. Not a roster dump. |
 | `/join` (`/join lobby`, `/join <room>`) | Shipped | This assistant checks in, hello, presence listing. | Deterministic enter. 1:1 is fine. Never whole roster. |
 | `/leave` (`/leave lobby`, `/leave <room>`) | Shipped | Goodbye + check out. | Deterministic exit. No roster dump. |
-| `/whos-here` | Shipped (keep; `/who` is next) | Presence listing. Must be checked in. | Hard "who is in the room" so assistants do not list the user's teammates. |
-| `/who` | Next | Alias of `/whos-here`. | Shorter, same semantics. Keep `/whos-here` working. |
+| `/whos-here` | Shipped | Presence listing. Must be checked in. | Hard "who is in the room" so assistants do not list the user's teammates. |
+| `/who` | Shipped | Alias of `/whos-here`. | Shorter, same semantics. Keep `/whos-here` working. |
 | `/log` | Next | Last N room lines (messages + commands). Pull. | Makes the whiteboard readable without implying live chat. |
 | `/say <text>` | Next | This assistant posts one line to the current room log. | Deterministic speak. Not default 1:1 relay. Not lovable until `/watch` exists. |
 | `/watch` | Next | Opt in: this assistant should pick up new room lines (poll or future notify). | Delivery. Without this, `/say` is a diary. Join does **not** auto-watch. |

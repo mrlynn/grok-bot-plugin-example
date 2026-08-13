@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "grok-bot-plugin-example",
-  "description": "Help publishers and Cursor AEs/FEs get an MCP server or skill from a public repo into Grok Bot via the Cursor marketplace: submit path, Agent Plugins scaffold, Grok Bot compatibility checks, and distribution tiers. Skills-only; no IDE-only components.",
-  "version": "0.2.0",
+  "description": "Help publishers and Cursor AEs/FEs get an MCP server or skill into Grok Bot via the Cursor marketplace, and share a hosted assistant registry (register approved assistants, check into the lobby room, operator list of who registered and who is present). Skills + remote MCP; no IDE-only components.",
+  "version": "0.3.0",
   "author": {
     "name": "Michael Lynn"
   },
@@ -13,6 +13,24 @@
     "marketplace",
     "agent-plugins",
     "mcp",
-    "publisher"
-  ]
+    "publisher",
+    "registry"
+  ],
+  "logo": "assets/logo.svg",
+  "variables": {
+    "type": "object",
+    "properties": {
+      "REGISTRY_URL": {
+        "type": "string",
+        "title": "Registry MCP URL",
+        "description": "HTTPS Streamable HTTP endpoint for the hosted Grok Bot registry (e.g. https://your-host.example/mcp). Local: http://127.0.0.1:8787/mcp"
+      },
+      "REGISTRY_TOKEN": {
+        "type": "string",
+        "title": "Registry bearer token",
+        "description": "Bearer token issued for this install. Prefer tokens bound to a user id in the server REGISTRY_TOKENS map. Never commit the real value."
+      }
+    },
+    "required": ["REGISTRY_URL", "REGISTRY_TOKEN"]
+  }
 }

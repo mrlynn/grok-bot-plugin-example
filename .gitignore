@@ -1,9 +1,8 @@
 .DS_Store
 node_modules
 .env
-.env.*
-!.env.example
-!server/.env.example
+.env.local
+.env.*.local
 *.log
 server/data/
 server/dist/

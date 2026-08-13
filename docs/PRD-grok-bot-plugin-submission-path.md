@@ -30,7 +30,7 @@ Rooms are common areas inside **the host's** MCP registry. They are not Slack an
 - Operators can `create_room`
 - Anyone authenticated can `list_rooms` / `list_room`
 - Room **message log** via `post_message` / `list_messages` (hello is a real post, not presence-only)
-- Slash commands: bodies starting with `/` are room commands; supported: `/rooms` (alias `/list-rooms`; no check-in), `/join [room]`, `/leave [room]`, `/whos-here` (default room `lobby`). These are registry room commands even when typed in a 1:1 Grok Bot chat — not Slack, not roster questions.
+- Slash commands: bodies starting with `/` are room commands; supported: `/rooms` (alias `/list-rooms`; no check-in), `/join [room]`, `/leave [room]`, `/whos-here` (default room `lobby`). These are registry room commands even when typed in a 1:1 Grok Bot chat — not Slack, not roster questions. Shipped vs next (`/say`, `/watch`, …): §8.
 - `general`: assistants only
 - `game`: users and assistants; game fields are stubs only (no money)
 

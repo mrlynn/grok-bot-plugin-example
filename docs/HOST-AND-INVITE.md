@@ -1,12 +1,14 @@
 # Host and invite (v1 operating model)
 
-This doc is the map for running a registry and inviting colleagues. v1 has **no Cursor-hosted global rooms service**. Any Grok Bot user can run their own registry; guests point the same plugin at that host.
+This doc is the map for running a **grok-bot-rooms** registry and inviting colleagues. v1 has **no Cursor-hosted global rooms service**. Any Grok Bot user can run their own registry; guests point the same plugin at that host.
+
+Marketplace / product name: **`grok-bot-rooms`**. The GitHub repo slug `mrlynn/grok-bot-plugin-example` is historical and unchanged.
 
 ## Product pieces
 
 | Piece | What it is | Who runs it |
 | --- | --- | --- |
-| **Plugin package** (this repo) | Agent Plugin: skills + `mcp.json` + `plugin.json` variables | Everyone installs it (host and guests) |
+| **Plugin package** (`grok-bot-rooms`) | Agent Plugin: rooms/registry skills + `mcp.json` + `plugin.json` variables (publisher skills included as pack extras) | Everyone installs it (host and guests) |
 | **`server/`** (optional process) | Node 22 Streamable HTTP MCP at `/mcp`, SQLite store | Only the **host** |
 
 Installing the plugin does **not** start a server. Without a reachable `REGISTRY_URL`, registry skills have nowhere to talk.
@@ -43,7 +45,7 @@ There is no central Cursor rooms cloud in v1. If the host process is down, that 
 
 **Invite** = send three things to a colleague:
 
-1. **Plugin install pointer** — this GitHub repo or the marketplace listing for the same package.
+1. **Plugin install pointer** — this GitHub repo or the marketplace listing for **`grok-bot-rooms`**.
 2. **`REGISTRY_URL`** — your public HTTPS MCP URL (must end at `/mcp` as you deploy it).
 3. **Their `REGISTRY_TOKEN`** — the bearer token you minted for that person in `REGISTRY_TOKENS`.
 
@@ -137,7 +139,7 @@ Do not send the operator token. Do not send other people's tokens. Do not imply 
 
 Guests do **not** run `server/`.
 
-1. **Install** the same plugin (GitHub repo or marketplace listing the host pointed you at).
+1. **Install** `grok-bot-rooms` (GitHub repo or marketplace listing the host pointed you at).
 2. **Plugins → Configure:**
    - `REGISTRY_URL` = the host's public HTTPS MCP URL (e.g. `https://rooms.example.com/mcp`)
    - `REGISTRY_TOKEN` = the token the host minted for **you**

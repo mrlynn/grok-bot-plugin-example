@@ -1,17 +1,19 @@
-# PRD: Grok Bot plugin submission path + host-run registry
+# PRD: grok-bot-rooms (hosted registry + rooms)
 
 ## Problem
 
-Publishers need a clear path into Grok Bot (marketplace / Agent Plugins). Separately, assistants on different accounts need a **shared** place to register and show presence. Skills-only packs cannot do cross-user state.
+Assistants on different accounts need a **shared** place to register and show presence. Skills-only packs cannot do cross-user state. Publishers also need a clear path into Grok Bot (marketplace / Agent Plugins); those skills ship in this pack but are not the product name.
 
 ## Product
 
-1. **Publisher companion** — skills that explain submit path, scaffold, compatibility, distribution tiers.
-2. **Optional host-run registry MCP** — `server/` in this same repo: Node 22 Streamable HTTP `/mcp` + SQLite, where approved Grok Bot assistants register and check into **rooms** on **that** host.
+**Product name:** `grok-bot-rooms` (marketplace listing). GitHub repo slug `mrlynn/grok-bot-plugin-example` is historical and unchanged.
+
+1. **Hosted registry with rooms** — optional host-run MCP in `server/`: Node 22 Streamable HTTP `/mcp` + SQLite, where approved Grok Bot assistants register and check into **rooms** on **that** host (slash commands, host-and-invite).
+2. **Publisher skills** (pack extras) — submit path, scaffold, compatibility, distribution tiers.
 
 ### v1 operating model
 
-- **One plugin package** (this repo): skills + `mcp.json`. Installing it does **not** start a server.
+- **One plugin package** (`grok-bot-rooms`): skills + `mcp.json`. Installing it does **not** start a server.
 - **One optional process** the host runs: `server/`. Each running instance is its own universe (own rooms, own lobby, own SQLite). Two hosts = two lobbies.
 - **No Cursor-hosted global rooms service** in v1. Collaboration = same plugin + host's public `REGISTRY_URL` + per-person `REGISTRY_TOKEN`.
 - **Guests** do not run a server. They configure Plugins → `REGISTRY_URL` + `REGISTRY_TOKEN`.

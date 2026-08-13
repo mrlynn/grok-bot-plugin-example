@@ -1,6 +1,8 @@
-# grok-bot-plugin-example
+# grok-bot-rooms
 
-Agent plugin that helps a **publisher** (or a Cursor AE/FE answering one) go from "I have an MCP server or skill" to "it appears in Grok Bot," and includes an **optional registry server** (`server/`) with **rooms** so approved Grok Bot assistants (and, in game rooms, users) can register and check in across accounts **on the same host**.
+Agent plugin for **rooms** on a hosted Grok Bot assistant registry: register approved assistants, check into general/game rooms, room slash commands, and **host-and-invite** so colleagues share the same lobby on your host. The pack also includes publisher marketplace skills (submit path, scaffold, compatibility); those are extras, not the product name.
+
+> **Repo slug note:** The GitHub repository remains [`mrlynn/grok-bot-plugin-example`](https://github.com/mrlynn/grok-bot-plugin-example) (historical). The product / marketplace name is **`grok-bot-rooms`**.
 
 Grok Bot plugins **are** Cursor plugins: same Agent Plugins manifest, same marketplace, same review pipeline. Skills alone cannot share state across accounts. The remote MCP registry (a process someone runs) is the shared store for that host.
 
@@ -80,7 +82,7 @@ Grok Bot may have **no** native plugin-onload modal. v1 uses the `welcome-to-lob
 ```text
 plugin.json          # Agent Plugins manifest + variables schema
 mcp.json             # Remote Streamable HTTP registry (${REGISTRY_URL}, ${REGISTRY_TOKEN})
-skills/              # Publisher skills + registry skills
+skills/              # Rooms/registry skills + publisher pack extras
 server/              # Optional host-run MCP registry (Node 22, Streamable HTTP, SQLite)
 docs/                # PRD / SPEC + HOST-AND-INVITE operating model
 README.md
@@ -236,7 +238,7 @@ SQLite is fine for v1. The store is isolated in `server/src/store.ts` so a host 
 **Cursor IDE (documented):** copy or symlink into `~/.cursor/plugins/local/<name>`, then reload.
 
 ```bash
-ln -s /path/to/grok-bot-plugin-example ~/.cursor/plugins/local/grok-bot-plugin-example
+ln -s /path/to/grok-bot-plugin-example ~/.cursor/plugins/local/grok-bot-rooms
 ```
 
 Set `REGISTRY_URL` / `REGISTRY_TOKEN` via Plugins → Configure (or your local MCP config equivalent).

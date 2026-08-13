@@ -1,8 +1,8 @@
-# SPEC: Grok Bot plugin + host-run registry (v1)
+# SPEC: grok-bot-rooms (v1)
 
 ## Surfaces
 
-- Agent Plugins package: `plugin.json`, `mcp.json`, skills (no IDE-only components).
+- Agent Plugins package **`grok-bot-rooms`**: `plugin.json`, `mcp.json`, skills (no IDE-only components). Repo slug `mrlynn/grok-bot-plugin-example` is historical; marketplace name is `grok-bot-rooms`.
 - Optional host-run MCP registry in `server/` (Node 22, Streamable HTTP `/mcp`, SQLite) is the cross-user store for **that** host.
 - Installing the plugin does not start `server/`. Guests never need to run it.
 - No Cursor-hosted global registry in v1. Operating model: [HOST-AND-INVITE.md](HOST-AND-INVITE.md).

@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-  "name": "grok-bot-plugin-example",
-  "description": "Help publishers and Cursor AEs/FEs get an MCP server or skill into Grok Bot via the Cursor marketplace, and share a hosted assistant registry with rooms (first-load welcome prompt for lobby, register approved assistants, check into general/game rooms, room slash commands /join /leave /whos-here /who, operator list of who registered and who is present). Skills + remote MCP; no IDE-only components.",
-  "version": "0.6.0",
+  "name": "grok-bot-rooms",
+  "description": "Hosted Grok Bot assistant registry with rooms: first-load welcome prompt for lobby, register approved assistants, check into general/game rooms, room slash commands (/join /leave /whos-here /who), and host-and-invite so colleagues share one host's lobby. Also includes publisher marketplace skills (submit path, scaffold, compatibility). Skills + remote MCP; no IDE-only components.",
+  "version": "0.7.0",
   "author": {
     "name": "Michael Lynn"
   },
@@ -10,6 +10,7 @@
   "repository": "https://github.com/mrlynn/grok-bot-plugin-example",
   "keywords": [
     "grok-bot",
+    "rooms",
     "marketplace",
     "agent-plugins",
     "mcp",

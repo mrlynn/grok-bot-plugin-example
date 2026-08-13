@@ -1,24 +1,36 @@
 ---
 name: rooms-slash-commands
 description: >-
-  HARD room slash commands for the hosted registry. When the user types /join,
-  /leave, or /whos-here (with optional room id; default lobby), ALWAYS treat them
-  as registry room commands — never as Slack, never as "who is on my roster",
-  never as a Grok Bot group-chat question. Works in 1:1 chats: the command targets
-  the MCP registry room, not whether this chat is a group. Follow PRD §7.8.
+  HARD room slash commands for the hosted registry. When the user types /rooms,
+  /list-rooms, /join, /leave, or /whos-here (with optional room id; default lobby),
+  ALWAYS treat them as registry room commands — never as Slack, never as "who is
+  on my roster", never as a Grok Bot group-chat question. Works in 1:1 chats: the
+  command targets the MCP registry room, not whether this chat is a group.
+  Follow PRD §7.8.
 ---
 
-# Room slash commands: /join, /leave, /whos-here
+# Room slash commands: /rooms, /join, /leave, /whos-here
 
 These are **deterministic** hosted-registry commands. If the user message is (or starts with) one of these, you **must** run the matching flow below. Do **not** reinterpret them.
 
 | User types | Meaning |
 | --- | --- |
+| `/rooms` or `/list-rooms` | List every created registry room (`id`, `type`, `title`, `created_by`). No check-in required. |
 | `/join` or `/join lobby` or `/join <room-id>` | **This** assistant joins that registry room (default `lobby`) |
 | `/leave` or `/leave lobby` or `/leave <room-id>` | **This** assistant leaves that registry room (default `lobby`) |
 | `/whos-here` | List who is checked into the room this assistant is in (or name a room via tools if already present) |
 
 Rooms are MCP common areas (not Slack, not Grok Bot group chats). A 1:1 Grok Bot chat is fine — the command is about the **registry room**.
+
+## /rooms (alias: /list-rooms)
+
+Works **immediately after configure**, with **no prior check-in**. This is the hosted room directory, not the user's assistant roster.
+
+1. Call `list_rooms`, **or** `post_message` with body `/rooms` (or `/list-rooms`). Both return the same directory; prefer `list_rooms` when available.
+2. Show every room: `id`, `type` (`general` | `game`), `title`, and `created_by` when present. Default `lobby` is always included (seeded at boot).
+3. Optionally one line: use `/join <room-id>` to enter. Do **not** auto-join.
+
+Do **not** dump the user's assistant roster. Do **not** reinterpret as Slack channels or a Grok Bot group list.
 
 ## /join [room]
 
@@ -51,9 +63,11 @@ If they are not in that room, surface the clear server error.
 
 ## Do not
 
-- Treat `/join`, `/leave`, or `/whos-here` as Slack commands
+- Treat `/rooms`, `/join`, `/leave`, or `/whos-here` as Slack commands
+- Reinterpret `/rooms` as the local assistant roster
 - Ask which teammate should join when the user typed `/join` (it is always **this** assistant)
 - Silent-join on install (these commands are explicit user actions)
+- Auto-join after `/rooms`
 - Invent a room id that does not exist
 - Make `/join` register or check in the whole roster
 - Reinterpret `/whos-here` as a local roster / "who do I have" question

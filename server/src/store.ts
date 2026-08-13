@@ -57,14 +57,21 @@ export type RoomMessage = {
   created_at: string;
 };
 
-export const SUPPORTED_ROOM_COMMANDS = ['whos-here', 'join', 'leave'] as const;
+export const SUPPORTED_ROOM_COMMANDS = ['whos-here', 'join', 'leave', 'rooms'] as const;
 export type SupportedRoomCommand = (typeof SUPPORTED_ROOM_COMMANDS)[number];
 
+/** Canonical `/rooms`; `/list-rooms` is accepted as an alias. */
+const ROOMS_COMMAND_ALIASES = new Set(['rooms', 'list-rooms']);
+
 export type PostMessageResult = {
-  message: RoomMessage;
+  /** Null for directory commands like `/rooms` that are not written to a room log. */
+  message: RoomMessage | null;
   command_result: {
     command: SupportedRoomCommand | string;
-    room: Room;
+    /** Present for room-scoped commands (/join, /leave, /whos-here). */
+    room?: Room;
+    /** Present for `/rooms` (and `/list-rooms`): every created registry room. */
+    rooms?: Room[];
     participants?: Participant[];
     game?: GameMetadataStub | null;
     /** Present after a successful /join (auto hello in the room log). */
@@ -375,8 +382,9 @@ export class RegistryStore {
   }
 
   /**
-   * Post a room message. Bodies starting with `/` are slash commands recorded in the log.
-   * Supported: `/whos-here`, `/join [room]`, `/leave [room]`.
+   * Post a room message. Bodies starting with `/` are slash commands.
+   * Supported: `/rooms` (alias `/list-rooms`), `/whos-here`, `/join [room]`, `/leave [room]`.
+   * `/rooms` lists every created registry room and does **not** require check-in (no room log write).
    * `/join` checks the poster into the room (default lobby) then posts hello + returns presence.
    * `/leave` checks them out of that room (optional goodbye). Other posts require already checked in.
    */
@@ -409,6 +417,10 @@ export class RegistryStore {
     }
 
     const parsed = parseSlashCommand(body);
+
+    if (parsed.kind === 'command' && parsed.command && ROOMS_COMMAND_ALIASES.has(parsed.command)) {
+      return this.handleRoomsCommand();
+    }
 
     if (parsed.kind === 'command' && parsed.command === 'join') {
       return this.handleJoinCommand({
@@ -475,12 +487,24 @@ export class RegistryStore {
         command_result: null,
         command_error: {
           code: 'unknown_command',
-          message: `Unknown room command "/${parsed.command}". Supported: /join, /leave, /whos-here`,
+          message: `Unknown room command "/${parsed.command}". Supported: /rooms, /join, /leave, /whos-here`,
         },
       };
     }
 
     return { message, command_result: null };
+  }
+
+  /** Directory listing; no presence required; does not write to a room log. */
+  private handleRoomsCommand(): PostMessageResult {
+    const { rooms } = this.listRooms();
+    return {
+      message: null,
+      command_result: {
+        command: 'rooms',
+        rooms,
+      },
+    };
   }
 
   private handleJoinCommand(opts: {

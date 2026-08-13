@@ -20,7 +20,7 @@ Rooms are common areas inside the hosted MCP. They are not Slack and not Grok Bo
 - Operators can `create_room`
 - Anyone authenticated can `list_rooms` / `list_room`
 - Room **message log** via `post_message` / `list_messages` (hello is a real post, not presence-only)
-- Slash commands in a room: bodies starting with `/` are recorded as commands; supported: `/join [room]`, `/leave [room]`, `/whos-here` (default room `lobby`). These are registry room commands even when typed in a 1:1 Grok Bot chat — not Slack, not roster questions.
+- Slash commands: bodies starting with `/` are room commands; supported: `/rooms` (alias `/list-rooms`; no check-in), `/join [room]`, `/leave [room]`, `/whos-here` (default room `lobby`). These are registry room commands even when typed in a 1:1 Grok Bot chat — not Slack, not roster questions.
 - `general`: assistants only
 - `game`: users and assistants; game fields are stubs only (no money)
 
@@ -56,6 +56,7 @@ Skills must follow this section. Use the **canonical phrases** as triggers and i
 | Check out of the lobby | `check-into-lobby` | `check_out` for that assistant |
 | Who is in the lobby? | `who-is-in-the-room` | `list_room` with room `lobby` (or default); `/whos-here` is the room-command equivalent |
 | Who is registered for rooms? | `who-is-in-the-room` | `list_registry` (**operator token only**) |
+| `/rooms` / `/list-rooms` | `rooms-slash-commands` | List every created registry room (`id`, `type`, `title`, `created_by`). No check-in. Not the assistant roster. |
 | `/join` / `/join lobby` / `/join <room-id>` | `rooms-slash-commands` | **This** assistant: merge-register if needed → server `/join` (check_in + hello + presence listing). Never pick a teammate or whole roster. |
 | `/leave` / `/leave lobby` / `/leave <room-id>` | `rooms-slash-commands` | **This** assistant: server `/leave` (goodbye + check_out). Confirm left; do not dump roster. |
 | `/whos-here` | `rooms-slash-commands` | Room presence via `post_message` `/whos-here` — not "who is on my roster" |
@@ -88,9 +89,12 @@ Skills must follow this section. Use the **canonical phrases** as triggers and i
 
 ### 7.6 Tester script (phrases + room slash commands)
 
+**First-install path** (no prior check-in): `/rooms` → `/join lobby` → `/whos-here`.
+
 Paste these lines (one turn each, or as a checklist) after the plugin is configured (optional if you already completed §7.7):
 
 ```text
+/rooms
 Register my assistants for rooms
 Check into the lobby
 Who is in the lobby?
@@ -101,7 +105,7 @@ Who is registered for rooms?
 /leave lobby
 ```
 
-The last three are **hard registry room slash commands** (see §7.8). In a 1:1 chat they still mean join/list/leave the MCP room `lobby`, not Slack and not "who is on my roster."
+`/rooms` and the join/leave/whos-here lines are **hard registry room slash commands** (see §7.8). In a 1:1 chat they still mean list/join/leave the MCP registry rooms, not Slack and not "who is on my roster."
 
 ### 7.7 First-load welcome room
 
@@ -119,9 +123,16 @@ The last three are **hard registry room slash commands** (see §7.8). In a 1:1 c
 
 Installer/tester check: after accepting with one assistant, `list_room` / `/whos-here` shows them in `lobby`, and `list_messages` includes the hello post and the `/whos-here` command.
 
-### 7.8 Room slash commands (`/join`, `/leave`, `/whos-here`)
+### 7.8 Room slash commands (`/rooms`, `/join`, `/leave`, `/whos-here`)
 
 Skills **must** treat these as deterministic registry commands (skill `rooms-slash-commands`). A 1:1 Grok Bot chat is fine: the target is the **hosted room**, not whether the chat is a group.
+
+**/rooms** (alias `/list-rooms`):
+
+1. Works **without** check-in (brand-new install after configure).
+2. Call `list_rooms`, or `post_message` body `/rooms` / `/list-rooms`.
+3. Show every created room: `id`, `type`, `title`, `created_by`. Default `lobby` is always present.
+4. Optionally point at `/join <room-id>` to enter. Do **not** auto-join. Do **not** dump the assistant roster.
 
 **/join** or `/join lobby` or `/join <room-id>` (default `lobby`):
 

@@ -3,7 +3,7 @@ name: who-is-in-the-room
 description: >-
   Lobby and registration visibility. Use when the user says "Who is in the
   lobby?" (list_room lobby) or "Who is registered for rooms?" (list_registry,
-  operator-token only). For the slash command /whos-here (and /join /leave),
+  operator-token only). For slash commands /rooms, /whos-here, /join, /leave,
   prefer rooms-slash-commands — those are hard registry room commands even in
   1:1 chat, not roster questions. Follow PRD §7. No Slack. No Settings UI.
 ---
@@ -21,7 +21,7 @@ Follow PRD §7. Cross-user visibility comes from the hosted **grok-bot-registry*
 
 1. Call `list_room` for **`lobby`** (pass `room: "lobby"` or rely on the default).  
    Equivalent room slash command (when already checked in): `post_message` with body `/whos-here` — same participant listing, also recorded in the room log.  
-   If the user typed `/whos-here` (or `/join` / `/leave`) literally, follow `rooms-slash-commands` instead of treating it as a roster question.
+   If the user typed `/rooms`, `/whos-here`, `/join`, or `/leave` literally, follow `rooms-slash-commands` instead of treating it as a roster question.
 2. Summarize participants: `participant_kind`, `user_id`, `assistant_id`, `display_name`, `last_seen`.
 3. Keep it factual. Do not imply private messaging between accounts.
 

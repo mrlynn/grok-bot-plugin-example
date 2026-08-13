@@ -8,16 +8,19 @@ Assistants on different accounts need a **shared** place to register and show pr
 
 **Product name:** `grok-bot-rooms` (marketplace listing). GitHub repo slug `mrlynn/grok-bot-plugin-example` is historical and unchanged.
 
-1. **Hosted registry with rooms** — optional host-run MCP in `server/`: Node 22 Streamable HTTP `/mcp` + SQLite, where approved Grok Bot assistants register and check into **rooms** on **that** host (slash commands, host-and-invite).
+1. **Hosted registry with rooms** — remote MCP (`/mcp` + bearer token) where approved Grok Bot assistants register and check into **rooms** on **that** host (slash commands, host-and-invite).
 2. **Publisher skills** (pack extras) — submit path, scaffold, compatibility, distribution tiers.
 
 ### v1 operating model
 
-- **One plugin package** (`grok-bot-rooms`): skills + `mcp.json`. Installing it does **not** start a server.
-- **One optional process** the host runs: `server/`. Each running instance is its own universe (own rooms, own lobby, own SQLite). Two hosts = two lobbies.
+- **One plugin package** (`grok-bot-rooms`, this repo / slug `grok-bot-plugin-example`): skills + `mcp.json`. Installing it does **not** start a server.
+- **Production registry** in a separate repo: [`mrlynn/grok-bot-rooms-server`](https://github.com/mrlynn/grok-bot-rooms-server) (public PoC: **Vercel + Turso**). Host sets guests' `REGISTRY_URL` to `https://<project>.vercel.app/mcp` and mints per-person `REGISTRY_TOKENS` there.
+- **`server/` in this plugin repo** is the **local / dev** copy (Node 22, Streamable HTTP `/mcp`, SQLite) for laptop demos and smoke tests. Not the production deploy path.
+- Each running registry is its own universe (own rooms, own lobby, own DB). Two hosts = two lobbies.
 - **No Cursor-hosted global rooms service** in v1. Collaboration = same plugin + host's public `REGISTRY_URL` + per-person `REGISTRY_TOKEN`.
 - **Guests** do not run a server. They configure Plugins → `REGISTRY_URL` + `REGISTRY_TOKEN`.
 - **Invite** = plugin install pointer (repo or marketplace) + URL + that person's token. Not Slack. Not a native Grok Bot group invite.
+- **Hosting portability:** Vercel + Turso is the public PoC. Later the registry can move to Anysphere / Internalsphere without changing the plugin contract (same `/mcp` + bearer token).
 
 See [HOST-AND-INVITE.md](HOST-AND-INVITE.md) for host/guest steps, architecture map, and limits.
 
@@ -38,23 +41,25 @@ Rooms are common areas inside **the host's** MCP registry. They are not Slack an
 
 ## Success (v1)
 
-- A host can deploy `server/`, mint per-person tokens, and invite a colleague with URL + token; both appear in the same `lobby` via `list_room` / `/whos-here`
+- A host can deploy [`grok-bot-rooms-server`](https://github.com/mrlynn/grok-bot-rooms-server), mint per-person tokens, and invite a colleague with `https://<project>.vercel.app/mcp` + token; both appear in the same `lobby` via `list_room` / `/whos-here`
+- A developer can run this repo's `server/` locally (SQLite) for demos with the same plugin contract
 - Two different user ids on the **same** host can register + check assistants into `lobby` and both appear in `list_room`
 - Operator can create a `game` room; user + assistant participants both appear
 - First-load welcome: pick one assistant → register if needed → check into `lobby` → hello message → `/whos-here` listing
-- No secrets in the plugin repo; tokens via Plugins → Configure / server env
+- No secrets in the plugin repo; tokens via Plugins → Configure / registry server env
 - Docs alone (`HOST-AND-INVITE.md` + README) are enough to host and invite without inventing a central Cursor service
 
 ## Out of scope
 
-- Cursor-hosted global / multi-tenant rooms service
+- Cursor-hosted global / multi-tenant rooms service (Vercel + Turso PoC is host-run, not a Cursor-wide default)
 - Native Grok Bot messaging between accounts
 - Native plugin-onload modal / Settings click-path for first-load (v1 uses a skill prompt instead; see §7.7)
 - Slack bots, Slack apps, GitHub PATs
 - Settings UI for the registry
 - Prizes, payouts, compensation, payment APIs
 - Silent auto-register or silent auto-check-in on install (prompting is in scope)
-- A second repo for the server (keep `server/` here)
+- Deleting this repo's `server/` in the same change as the hosting-doc split (keep local/dev copy until deliberately removed)
+- New slash commands beyond the shipped catalog in §7.8 / §8 (docs-only next wave stays docs-only)
 
 ---
 

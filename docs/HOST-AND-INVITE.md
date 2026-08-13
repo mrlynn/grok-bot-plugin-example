@@ -1,19 +1,22 @@
 # Host and invite (v1 operating model)
 
-This doc is the map for running a **grok-bot-rooms** registry and inviting colleagues. v1 has **no Cursor-hosted global rooms service**. Any Grok Bot user can run their own registry; guests point the same plugin at that host.
+This doc is the map for running a **grok-bot-rooms** registry and inviting colleagues. v1 has **no Cursor-hosted global rooms service**. Any Grok Bot user can host a registry; guests point the same plugin at that host.
 
-Marketplace / product name: **`grok-bot-rooms`**. The GitHub repo slug `mrlynn/grok-bot-plugin-example` is historical and unchanged.
+Marketplace / product name: **`grok-bot-rooms`**. The plugin GitHub repo slug [`mrlynn/grok-bot-plugin-example`](https://github.com/mrlynn/grok-bot-plugin-example) is historical and unchanged. The production registry lives in a **separate** repo: [`mrlynn/grok-bot-rooms-server`](https://github.com/mrlynn/grok-bot-rooms-server).
 
 ## Product pieces
 
 | Piece | What it is | Who runs it |
 | --- | --- | --- |
-| **Plugin package** (`grok-bot-rooms`) | Agent Plugin: rooms/registry skills + `mcp.json` + `plugin.json` variables (publisher skills included as pack extras) | Everyone installs it (host and guests) |
-| **`server/`** (optional process) | Node 22 Streamable HTTP MCP at `/mcp`, SQLite store | Only the **host** |
+| **Plugin package** (`grok-bot-rooms`) | Agent Plugin: rooms/registry skills + `mcp.json` + `plugin.json` variables (publisher skills included as pack extras). This repo. | Everyone installs it (host and guests) |
+| **Production registry** ([`grok-bot-rooms-server`](https://github.com/mrlynn/grok-bot-rooms-server)) | Hosted MCP at `/mcp` (public PoC: **Vercel + Turso**) | Only the **host** |
+| **`server/` in the plugin repo** | **Local / dev** copy: Node 22 Streamable HTTP `/mcp`, SQLite | Optional laptop demos / smoke tests |
 
 Installing the plugin does **not** start a server. Without a reachable `REGISTRY_URL`, registry skills have nowhere to talk.
 
-Each running `server/` is its **own universe**: own rooms, own lobby, own SQLite file. Two hosts = two lobbies. Guests do **not** run a server.
+Each running registry is its **own universe**: own rooms, own lobby, own DB. Two hosts = two lobbies. Guests do **not** run a server.
+
+The plugin contract stays the same wherever you host: Streamable HTTP `/mcp` + `Authorization: Bearer <REGISTRY_TOKEN>`. Vercel + Turso is the public PoC; later the registry can move to Anysphere / Internalsphere without changing how guests configure the plugin.
 
 ## Architecture
 
@@ -27,17 +30,19 @@ flowchart LR
 
   Plugin -->|"Streamable HTTP<br/>Authorization: Bearer REGISTRY_TOKEN"| MCP["Host's public HTTPS<br/>…/mcp"]
 
-  subgraph hostProcess["Host machine / deploy"]
-    MCP --> Server["server/ Node 22"]
-    Server --> DB[(SQLite)]
+  subgraph hostProcess["Production host"]
+    MCP --> Server["grok-bot-rooms-server<br/>Vercel"]
+    Server --> DB[(Turso)]
   end
 ```
 
+Local demos swap the right-hand box for this repo's `server/` + SQLite on `http://127.0.0.1:8787/mcp` (not reachable by remote guests).
+
 Flow in words:
 
-1. Guest (or host) has Grok Bot with this plugin installed.
-2. Plugin MCP client calls the host's public `REGISTRY_URL` (e.g. `https://rooms.example.com/mcp`).
-3. Host's `server/` authenticates with that person's `REGISTRY_TOKEN` and reads/writes its SQLite store.
+1. Guest (or host) has Grok Bot with `grok-bot-rooms` installed.
+2. Plugin MCP client calls the host's public `REGISTRY_URL` (e.g. `https://<project>.vercel.app/mcp`).
+3. Host's registry authenticates with that person's `REGISTRY_TOKEN` and reads/writes its store (Turso in production; SQLite for local `server/`).
 
 There is no central Cursor rooms cloud in v1. If the host process is down, that universe is unavailable.
 
@@ -46,8 +51,8 @@ There is no central Cursor rooms cloud in v1. If the host process is down, that 
 **Invite** = send three things to a colleague:
 
 1. **Plugin install pointer** — this GitHub repo or the marketplace listing for **`grok-bot-rooms`**.
-2. **`REGISTRY_URL`** — your public HTTPS MCP URL (must end at `/mcp` as you deploy it).
-3. **Their `REGISTRY_TOKEN`** — the bearer token you minted for that person in `REGISTRY_TOKENS`.
+2. **`REGISTRY_URL`** — your public HTTPS MCP URL (must end at `/mcp` as you deploy it), typically `https://<project>.vercel.app/mcp`.
+3. **Their `REGISTRY_TOKEN`** — the bearer token you minted for that person in `REGISTRY_TOKENS` on the host registry.
 
 That is the whole invite. It is **not**:
 
@@ -60,9 +65,21 @@ That is the whole invite. It is **not**:
 
 You own uptime, who can join, and who can see presence on **your** registry.
 
-### 1. Run or deploy `server/`
+### 1. Deploy the production registry (preferred)
 
-Requires **Node.js 22+**. Local:
+Deploy [`mrlynn/grok-bot-rooms-server`](https://github.com/mrlynn/grok-bot-rooms-server) on **Vercel** with **Turso** (see that repo's README for env vars and DB wiring).
+
+After deploy, your public MCP URL is:
+
+```text
+https://<project>.vercel.app/mcp
+```
+
+Keep the deployment healthy. Guests cannot reach your laptop's `localhost`.
+
+### 1b. Local / dev only (`server/` in this repo)
+
+For laptop demos and smoke tests (not for real remote guests):
 
 ```bash
 cd server
@@ -76,18 +93,11 @@ npm start
 # -> http://127.0.0.1:8787/mcp
 ```
 
-For real guests, deploy as a long-lived Node 22 HTTP service (Fly.io, Railway, Render, a VM, etc.):
-
-- `HOST=0.0.0.0`, platform `PORT`
-- Persistent volume for `REGISTRY_DB_PATH`
-- TLS in front (platform or reverse proxy)
-- Public URL for plugins: `https://<your-host>/mcp`
-
-Keep the process up. Guests cannot reach your laptop's `localhost`.
+Requires **Node.js 22+**. Same tool surface and auth map as production; different process and store.
 
 ### 2. Mint tokens in `REGISTRY_TOKENS`
 
-Preferred auth is a JSON map of bearer token → `{ "userId", "role" }`:
+Preferred auth is a JSON map of bearer token → `{ "userId", "role" }` (set as an env var on the Vercel project for production, or in local `.env` for `server/`):
 
 ```bash
 export REGISTRY_TOKENS='{
@@ -104,9 +114,11 @@ Rules:
 - Never send person A's token to person B.
 - Prefer this map over a shared `REGISTRY_TOKEN` (shared mode is forgeable; see Limits).
 
-### 3. Set `ALLOWED_HOSTS` for the public hostname
+### 3. Host hardening (when applicable)
 
-When binding beyond localhost, set Host checks explicitly, e.g.:
+On the production server, follow [`grok-bot-rooms-server`](https://github.com/mrlynn/grok-bot-rooms-server) for host/origin allowlists and Turso credentials.
+
+For local `server/` when binding beyond localhost, set Host checks explicitly, e.g.:
 
 ```bash
 export ALLOWED_HOSTS=rooms.example.com
@@ -120,7 +132,7 @@ In Grok Bot: **Plugins → Configure** (same plugin package):
 
 | Variable | Your value |
 | --- | --- |
-| `REGISTRY_URL` | Your public HTTPS MCP URL, e.g. `https://rooms.example.com/mcp` |
+| `REGISTRY_URL` | Your public HTTPS MCP URL, e.g. `https://<project>.vercel.app/mcp` |
 | `REGISTRY_TOKEN` | Your user token, **or** your operator token if you need `create_room` / `list_registry` |
 
 Local-only demos may use `http://127.0.0.1:8787/mcp`; that URL only works for clients on the same machine.
@@ -129,19 +141,19 @@ Local-only demos may use `http://127.0.0.1:8787/mcp`; that URL only works for cl
 
 For each colleague, send **only**:
 
-- Plugin install pointer (repo or marketplace)
-- `REGISTRY_URL` = your public `/mcp` URL
+- Plugin install pointer (repo or marketplace for `grok-bot-rooms`)
+- `REGISTRY_URL` = your public `/mcp` URL (e.g. `https://<project>.vercel.app/mcp`)
 - `REGISTRY_TOKEN` = **their** token from the map
 
 Do not send the operator token. Do not send other people's tokens. Do not imply this is a Slack or Grok Bot group invite.
 
 ## Guest steps
 
-Guests do **not** run `server/`.
+Guests do **not** run a registry server (neither `grok-bot-rooms-server` nor this repo's `server/`).
 
-1. **Install** `grok-bot-rooms` (GitHub repo or marketplace listing the host pointed you at).
+1. **Install** `grok-bot-rooms` (GitHub repo [`mrlynn/grok-bot-plugin-example`](https://github.com/mrlynn/grok-bot-plugin-example) or marketplace listing the host pointed you at).
 2. **Plugins → Configure:**
-   - `REGISTRY_URL` = the host's public HTTPS MCP URL (e.g. `https://rooms.example.com/mcp`)
+   - `REGISTRY_URL` = the host's public HTTPS MCP URL (e.g. `https://<project>.vercel.app/mcp`)
    - `REGISTRY_TOKEN` = the token the host minted for **you**
 3. Open a chat and use the first-install path:
 
@@ -159,25 +171,30 @@ You only see people on **this** host's registry. Another host's URL is a differe
 
 | Limit | Why it matters |
 | --- | --- |
-| **Public HTTPS for real guests** | Grok Bot's MCP client must reach `REGISTRY_URL`. The host's `localhost` / `127.0.0.1` is not reachable from another person's client. |
+| **Public HTTPS for real guests** | Grok Bot's MCP client must reach `REGISTRY_URL`. The host's `localhost` / `127.0.0.1` (local `server/`) is not reachable from another person's client. |
 | **Prefer per-person tokens** | A shared one-token-for-everyone (`REGISTRY_TOKEN` + `X-Grok-User`) is forgeable and identity-colliding. Use `REGISTRY_TOKENS` with one entry per person. |
-| **Host owns uptime and visibility** | If the host's process dies, the lobby is gone. The host decides who gets a token and thus who can see presence on that server. |
-| **No Cursor central rooms service in v1** | There is no global Cursor-operated registry. Collaboration = same plugin + same host URL + each person's token. |
-| **Not Slack / not native federation** | Rooms live in the host's MCP SQLite. They are not Slack channels and not Grok Bot native cross-account messaging. |
+| **Host owns uptime and visibility** | If the host's deployment dies, the lobby is gone. The host decides who gets a token and thus who can see presence on that server. |
+| **No Cursor central rooms service in v1** | There is no global Cursor-operated registry. Collaboration = same plugin + same host URL + each person's token. Vercel + Turso is a public PoC host, not a Cursor-wide default. |
+| **Not Slack / not native federation** | Rooms live in the host's MCP store (Turso in production; SQLite locally). They are not Slack channels and not Grok Bot native cross-account messaging. |
+| **Hosting can move later** | Anysphere / Internalsphere can replace Vercel + Turso later without changing the plugin contract (same `/mcp` + bearer token). |
 
 ## Quick checklist
 
-**Host**
+**Host (production)**
 
-- [ ] Deploy `server/` with Node 22, TLS, persistent SQLite
+- [ ] Deploy [`grok-bot-rooms-server`](https://github.com/mrlynn/grok-bot-rooms-server) (Vercel + Turso)
 - [ ] `REGISTRY_TOKENS` with one user token per person + operator for you
-- [ ] `ALLOWED_HOSTS` includes the public hostname
-- [ ] Process stays up; URL is `https://…/mcp`
+- [ ] Public URL is `https://<project>.vercel.app/mcp` (or your custom domain's `/mcp`)
 - [ ] Plugin configured to that URL with your token
 - [ ] Each invitee got plugin pointer + URL + **their** token only
 
+**Host (local demo only)**
+
+- [ ] Run this repo's `server/` on Node 22 with SQLite
+- [ ] `REGISTRY_URL=http://127.0.0.1:8787/mcp` on the same machine only
+
 **Guest**
 
-- [ ] Same plugin installed
+- [ ] Same plugin installed (`grok-bot-rooms`)
 - [ ] `REGISTRY_URL` + `REGISTRY_TOKEN` configured
 - [ ] `/rooms` → `/join lobby` → `/whos-here` works

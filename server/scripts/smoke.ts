@@ -1,0 +1,211 @@
+/**
+ * Local smoke:
+ * 1) two users register + assistant check_in to lobby; list_room shows both
+ * 2) operator create_room(game); user + assistant participants; list_rooms
+ *
+ * Usage (from server/):
+ *   npm run smoke
+ */
+import { spawn, type ChildProcess } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
+
+const BASE = process.env.SMOKE_BASE_URL ?? 'http://127.0.0.1:8787';
+const TOKENS = {
+  alice: 'smoke-alice-token',
+  bob: 'smoke-bob-token',
+  ops: 'smoke-ops-token',
+};
+
+async function main(): Promise<void> {
+  let child: ChildProcess | undefined;
+  if (process.env.SMOKE_SPAWN === '1') {
+    child = spawnServer();
+    await waitForHealth(`${BASE}/healthz`);
+  }
+
+  try {
+    await runAsUser('alice', TOKENS.alice, [
+      { id: 'alice-helper', name: 'Alice Helper' },
+    ]);
+    await runAsUser('bob', TOKENS.bob, [{ id: 'bob-helper', name: 'Bob Helper' }]);
+
+    const lobby = await callTool(TOKENS.ops, 'list_room', {});
+    const lobbyParticipants =
+      (lobby as { participants?: Array<{ user_id: string; participant_kind: string }> })
+        .participants ?? [];
+    const lobbyUserIds = new Set(
+      lobbyParticipants
+        .filter((p) => p.participant_kind === 'assistant')
+        .map((p) => p.user_id),
+    );
+
+    console.log('list_room lobby:', JSON.stringify(lobby, null, 2));
+
+    if (!lobbyUserIds.has('alice') || !lobbyUserIds.has('bob')) {
+      throw new Error(
+        `Expected assistant owners alice and bob in lobby; got: ${[...lobbyUserIds].join(', ') || '(none)'}`,
+      );
+    }
+
+    const roomsBefore = await callTool(TOKENS.ops, 'list_rooms', {});
+    console.log('list_rooms:', JSON.stringify(roomsBefore, null, 2));
+    const roomIds = new Set(
+      ((roomsBefore as { rooms?: Array<{ id: string }> }).rooms ?? []).map((r) => r.id),
+    );
+    if (!roomIds.has('lobby')) {
+      throw new Error('Expected default lobby room from boot');
+    }
+
+    const created = await callTool(TOKENS.ops, 'create_room', {
+      id: 'arena-1',
+      type: 'game',
+      title: 'Arena One',
+    });
+    console.log('create_room:', JSON.stringify(created, null, 2));
+
+    // Game rooms: user participant (alice) + assistant participant (bob's helper)
+    await callTool(TOKENS.alice, 'check_in', {
+      room: 'arena-1',
+      participant_kind: 'user',
+    });
+    await callTool(TOKENS.bob, 'check_in', {
+      room: 'arena-1',
+      assistant_id: 'bob-helper',
+    });
+
+    const arena = await callTool(TOKENS.ops, 'list_room', { room: 'arena-1' });
+    console.log('list_room arena-1:', JSON.stringify(arena, null, 2));
+    const kinds = new Set(
+      ((arena as { participants?: Array<{ participant_kind: string }> }).participants ?? []).map(
+        (p) => p.participant_kind,
+      ),
+    );
+    if (!kinds.has('user') || !kinds.has('assistant')) {
+      throw new Error(`Expected user and assistant participants in game room; got: ${[...kinds]}`);
+    }
+    const game = (arena as { game?: { status?: string } }).game;
+    if (game?.status !== 'stub') {
+      throw new Error(`Expected game metadata stub, got: ${JSON.stringify(game)}`);
+    }
+
+    // General rooms reject user participants
+    const rejected = await callToolRaw(TOKENS.alice, 'check_in', {
+      room: 'lobby',
+      participant_kind: 'user',
+    });
+    if (!rejected.isError) {
+      throw new Error('Expected user check_in to general lobby to fail');
+    }
+
+    const registry = await callTool(TOKENS.ops, 'list_registry', {});
+    console.log('list_registry:', JSON.stringify(registry, null, 2));
+
+    console.log('SMOKE OK: lobby + game room rooms/participants');
+  } finally {
+    if (child?.pid) {
+      child.kill('SIGTERM');
+    }
+  }
+}
+
+async function runAsUser(
+  userId: string,
+  token: string,
+  assistants: Array<{ id: string; name: string }>,
+): Promise<void> {
+  await callTool(token, 'register_assistants', { assistants });
+  await callTool(token, 'check_in', { assistant_id: assistants[0].id });
+  console.log(`checked in ${userId}/${assistants[0].id} -> lobby`);
+}
+
+async function callTool(
+  token: string,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<unknown> {
+  const result = await callToolRaw(token, name, args);
+  if (result.isError) {
+    throw new Error(`Tool ${name} returned error: ${JSON.stringify(result.payload)}`);
+  }
+  return result.payload;
+}
+
+async function callToolRaw(
+  token: string,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<{ isError: boolean; payload: unknown }> {
+  const transport = new StreamableHTTPClientTransport(new URL(`${BASE}/mcp`), {
+    requestInit: {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  });
+  const client = new Client({ name: 'registry-smoke', version: '1.0.0' });
+  try {
+    await client.connect(transport);
+    const result = await client.callTool({ name, arguments: args });
+    const text = result.content?.find((c) => c.type === 'text');
+    const payload =
+      text && text.type === 'text'
+        ? JSON.parse(text.text)
+        : (result.structuredContent ?? result);
+    return { isError: Boolean(result.isError), payload };
+  } finally {
+    await client.close().catch(() => undefined);
+    await transport.close().catch(() => undefined);
+  }
+}
+
+function spawnServer(): ChildProcess {
+  const tokens = JSON.stringify({
+    [TOKENS.alice]: { userId: 'alice', role: 'user' },
+    [TOKENS.bob]: { userId: 'bob', role: 'user' },
+    [TOKENS.ops]: { userId: 'operator', role: 'operator' },
+  });
+  const serverRoot = fileURLToPath(new URL('..', import.meta.url));
+  const child = spawn(
+    process.execPath,
+    ['--experimental-strip-types', 'src/index.ts'],
+    {
+      cwd: serverRoot,
+      env: {
+        ...process.env,
+        PORT: '8787',
+        HOST: '127.0.0.1',
+        REGISTRY_DB_PATH: ':memory:',
+        REGISTRY_TOKENS: tokens,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
+  child.stdout?.on('data', (chunk) => process.stdout.write(`[server] ${chunk}`));
+  child.stderr?.on('data', (chunk) => process.stderr.write(`[server] ${chunk}`));
+  child.on('exit', (code, signal) => {
+    if (code && code !== 0) {
+      console.error(`server exited code=${code} signal=${signal}`);
+    }
+  });
+  return child;
+}
+
+async function waitForHealth(url: string, attempts = 40): Promise<void> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return;
+    } catch {
+      // retry
+    }
+    await sleep(150);
+  }
+  throw new Error(`Server did not become healthy at ${url}`);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

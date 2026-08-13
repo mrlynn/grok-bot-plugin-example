@@ -1,7 +1,8 @@
 /**
  * Local smoke:
- * 1) two users register + assistant check_in to lobby; list_room shows both
- * 2) operator create_room(game); user + assistant participants; list_rooms
+ * 1) first-run welcome path: register one → check_in lobby → hello → /whos-here
+ * 2) two users register + assistant check_in to lobby; list_room shows both
+ * 3) operator create_room(game); user + assistant participants; list_rooms
  *
  * Usage (from server/):
  *   npm run smoke
@@ -26,9 +27,11 @@ async function main(): Promise<void> {
   }
 
   try {
-    await runAsUser('alice', TOKENS.alice, [
-      { id: 'alice-helper', name: 'Alice Helper' },
-    ]);
+    await runFirstRunWelcomePath('alice', TOKENS.alice, {
+      id: 'alice-helper',
+      name: 'Alice Helper',
+    });
+
     await runAsUser('bob', TOKENS.bob, [{ id: 'bob-helper', name: 'Bob Helper' }]);
 
     const lobby = await callTool(TOKENS.ops, 'list_room', {});
@@ -102,12 +105,86 @@ async function main(): Promise<void> {
     const registry = await callTool(TOKENS.ops, 'list_registry', {});
     console.log('list_registry:', JSON.stringify(registry, null, 2));
 
-    console.log('SMOKE OK: lobby + game room rooms/participants');
+    console.log('SMOKE OK: first-run welcome + lobby + game room rooms/participants');
   } finally {
     if (child?.pid) {
       child.kill('SIGTERM');
     }
   }
+}
+
+/**
+ * Mirrors skills/welcome-to-lobby: register one (merge if needed) → check_in lobby
+ * → post hello → /whos-here → assert presence + message log.
+ */
+async function runFirstRunWelcomePath(
+  userId: string,
+  token: string,
+  assistant: { id: string; name: string },
+): Promise<void> {
+  await callTool(token, 'register_assistants', {
+    assistants: [assistant],
+    mode: 'merge',
+  });
+  await callTool(token, 'check_in', { assistant_id: assistant.id });
+
+  const helloBody = `Hello, ${assistant.name} here.`;
+  const hello = await callTool(token, 'post_message', {
+    assistant_id: assistant.id,
+    body: helloBody,
+  });
+  const helloMessage = (hello as { message?: { body?: string; kind?: string } }).message;
+  if (helloMessage?.body !== helloBody || helloMessage?.kind !== 'message') {
+    throw new Error(`Expected hello message post; got: ${JSON.stringify(hello)}`);
+  }
+
+  const whosHere = await callTool(token, 'post_message', {
+    assistant_id: assistant.id,
+    body: '/whos-here',
+  });
+  const command = (whosHere as {
+    message?: { kind?: string; command?: string; body?: string };
+    command_result?: {
+      command?: string;
+      participants?: Array<{ user_id: string; assistant_id: string | null; display_name: string }>;
+    };
+  }).message;
+  const commandResult = (whosHere as {
+    command_result?: {
+      command?: string;
+      participants?: Array<{ user_id: string; assistant_id: string | null; display_name: string }>;
+    };
+  }).command_result;
+
+  if (command?.kind !== 'command' || command?.command !== 'whos-here') {
+    throw new Error(`Expected /whos-here recorded as command; got: ${JSON.stringify(whosHere)}`);
+  }
+  if (commandResult?.command !== 'whos-here') {
+    throw new Error(`Expected /whos-here command_result; got: ${JSON.stringify(whosHere)}`);
+  }
+  const present = (commandResult.participants ?? []).some(
+    (p) => p.user_id === userId && p.assistant_id === assistant.id,
+  );
+  if (!present) {
+    throw new Error(
+      `Expected ${userId}/${assistant.id} in /whos-here listing; got: ${JSON.stringify(commandResult.participants)}`,
+    );
+  }
+
+  const messages = await callTool(token, 'list_messages', { room: 'lobby' });
+  const bodies = new Set(
+    ((messages as { messages?: Array<{ body: string; kind: string }> }).messages ?? []).map(
+      (m) => `${m.kind}:${m.body}`,
+    ),
+  );
+  if (!bodies.has(`message:${helloBody}`)) {
+    throw new Error(`Expected hello in list_messages; got: ${JSON.stringify(messages)}`);
+  }
+  if (!bodies.has('command:/whos-here')) {
+    throw new Error(`Expected /whos-here in list_messages; got: ${JSON.stringify(messages)}`);
+  }
+
+  console.log(`first-run welcome OK for ${userId}/${assistant.id}`);
 }
 
 async function runAsUser(

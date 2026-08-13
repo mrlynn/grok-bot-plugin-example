@@ -1,8 +1,8 @@
 {
   "name": "grok-bot-registry-mcp",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
-  "description": "Hosted MCP registry for approved Grok Bot assistants and typed rooms (general/game, lobby default)",
+  "description": "Hosted MCP registry for approved Grok Bot assistants, typed rooms (general/game, lobby default), and room message/slash-command logs",
   "type": "module",
   "scripts": {
     "start": "node --experimental-strip-types src/index.ts",

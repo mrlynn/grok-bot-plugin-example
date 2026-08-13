@@ -20,7 +20,7 @@ Rooms are common areas inside the hosted MCP. They are not Slack and not Grok Bo
 - Operators can `create_room`
 - Anyone authenticated can `list_rooms` / `list_room`
 - Room **message log** via `post_message` / `list_messages` (hello is a real post, not presence-only)
-- Slash commands in a room: bodies starting with `/` are recorded as commands; `/whos-here` returns current presence (same listing as `list_room`)
+- Slash commands in a room: bodies starting with `/` are recorded as commands; supported: `/join [room]`, `/leave [room]`, `/whos-here` (default room `lobby`). These are registry room commands even when typed in a 1:1 Grok Bot chat — not Slack, not roster questions.
 - `general`: assistants only
 - `game`: users and assistants; game fields are stubs only (no money)
 
@@ -56,6 +56,9 @@ Skills must follow this section. Use the **canonical phrases** as triggers and i
 | Check out of the lobby | `check-into-lobby` | `check_out` for that assistant |
 | Who is in the lobby? | `who-is-in-the-room` | `list_room` with room `lobby` (or default); `/whos-here` is the room-command equivalent |
 | Who is registered for rooms? | `who-is-in-the-room` | `list_registry` (**operator token only**) |
+| `/join` / `/join lobby` / `/join <room-id>` | `rooms-slash-commands` | **This** assistant: merge-register if needed → server `/join` (check_in + hello + presence listing). Never pick a teammate or whole roster. |
+| `/leave` / `/leave lobby` / `/leave <room-id>` | `rooms-slash-commands` | **This** assistant: server `/leave` (goodbye + check_out). Confirm left; do not dump roster. |
+| `/whos-here` | `rooms-slash-commands` | Room presence via `post_message` `/whos-here` — not "who is on my roster" |
 
 ### 7.2 Install
 
@@ -83,9 +86,9 @@ Skills must follow this section. Use the **canonical phrases** as triggers and i
 - "Who is in the lobby?" → `list_room` (`lobby` only for this phrase).
 - "Who is registered for rooms?" → `list_registry`, operator-token only. If forbidden, say the caller needs an operator token; do not fake a registry dump.
 
-### 7.6 Five-line tester script
+### 7.6 Tester script (phrases + room slash commands)
 
-Paste these five lines (one turn each, or as a checklist) after the plugin is configured (optional if you already completed §7.7):
+Paste these lines (one turn each, or as a checklist) after the plugin is configured (optional if you already completed §7.7):
 
 ```text
 Register my assistants for rooms
@@ -93,7 +96,12 @@ Check into the lobby
 Who is in the lobby?
 Check out of the lobby
 Who is registered for rooms?
+/join lobby
+/whos-here
+/leave lobby
 ```
+
+The last three are **hard registry room slash commands** (see §7.8). In a 1:1 chat they still mean join/list/leave the MCP room `lobby`, not Slack and not "who is on my roster."
 
 ### 7.7 First-load welcome room
 
@@ -110,3 +118,25 @@ Who is registered for rooms?
    5. Show the presence listing from the command result (same as `list_room`)
 
 Installer/tester check: after accepting with one assistant, `list_room` / `/whos-here` shows them in `lobby`, and `list_messages` includes the hello post and the `/whos-here` command.
+
+### 7.8 Room slash commands (`/join`, `/leave`, `/whos-here`)
+
+Skills **must** treat these as deterministic registry commands (skill `rooms-slash-commands`). A 1:1 Grok Bot chat is fine: the target is the **hosted room**, not whether the chat is a group.
+
+**/join** or `/join lobby` or `/join <room-id>` (default `lobby`):
+
+1. Always **this** assistant (the one receiving the command). Do not list the roster and ask. Do not pick a teammate.
+2. `register_assistants` with `mode: "merge"` for this one assistant if needed.
+3. `post_message` body `/join` or `/join <room-id>` — server `check_in`s, posts `Hello, <name> here.`, returns presence listing (`command_result`, same as `list_room`).
+4. Show the listing to the user.
+
+**/leave** or `/leave lobby` or `/leave <room-id>` (default `lobby`):
+
+1. `post_message` body `/leave` or `/leave <room-id>` — server records the command, optional goodbye in the room log, `check_out` from that room.
+2. Confirm they left. Do **not** dump the user's assistant roster.
+
+**/whos-here**:
+
+1. Requires already checked in. `post_message` body `/whos-here` → presence listing. Not a roster question.
+
+If the room does not exist, surface the clear server error. Do not invent rooms. Unknown slash commands stay errors. `/join` must not add the whole roster. No silent join on install.

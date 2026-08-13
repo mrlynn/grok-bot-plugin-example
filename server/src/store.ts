@@ -57,13 +57,21 @@ export type RoomMessage = {
   created_at: string;
 };
 
+export const SUPPORTED_ROOM_COMMANDS = ['whos-here', 'join', 'leave'] as const;
+export type SupportedRoomCommand = (typeof SUPPORTED_ROOM_COMMANDS)[number];
+
 export type PostMessageResult = {
   message: RoomMessage;
   command_result: {
-    command: string;
+    command: SupportedRoomCommand | string;
     room: Room;
-    participants: Participant[];
-    game: GameMetadataStub | null;
+    participants?: Participant[];
+    game?: GameMetadataStub | null;
+    /** Present after a successful /join (auto hello in the room log). */
+    hello?: RoomMessage;
+    /** Present after a successful /leave (optional goodbye in the room log). */
+    goodbye?: RoomMessage;
+    checked_out?: boolean;
   } | null;
   /** Set when kind is command but the slash name is not supported. */
   command_error?: {
@@ -368,8 +376,9 @@ export class RegistryStore {
 
   /**
    * Post a room message. Bodies starting with `/` are slash commands recorded in the log.
-   * `/whos-here` returns the same presence listing as `list_room`.
-   * Poster must already be checked into the target room.
+   * Supported: `/whos-here`, `/join [room]`, `/leave [room]`.
+   * `/join` checks the poster into the room (default lobby) then posts hello + returns presence.
+   * `/leave` checks them out of that room (optional goodbye). Other posts require already checked in.
    */
   postMessage(opts: {
     userId: string;
@@ -378,12 +387,6 @@ export class RegistryStore {
     assistantId?: string;
     body: string;
   }): PostMessageResult {
-    const roomId = opts.roomId?.trim() || DEFAULT_ROOM;
-    const room = this.getRoom(roomId);
-    if (!room) {
-      throw new RegistryError('room_not_found', `Room "${roomId}" does not exist`);
-    }
-
     const body = opts.body.trim();
     if (!body) {
       throw new RegistryError('invalid_message', 'Message body is required');
@@ -405,6 +408,36 @@ export class RegistryStore {
       );
     }
 
+    const parsed = parseSlashCommand(body);
+
+    if (parsed.kind === 'command' && parsed.command === 'join') {
+      return this.handleJoinCommand({
+        userId: opts.userId,
+        participantKind: kind,
+        assistantId: assistantKey || undefined,
+        body,
+        roomArg: parsed.arg,
+        roomIdHint: opts.roomId,
+      });
+    }
+
+    if (parsed.kind === 'command' && parsed.command === 'leave') {
+      return this.handleLeaveCommand({
+        userId: opts.userId,
+        participantKind: kind,
+        assistantId: assistantKey || undefined,
+        body,
+        roomArg: parsed.arg,
+        roomIdHint: opts.roomId,
+      });
+    }
+
+    const roomId = opts.roomId?.trim() || DEFAULT_ROOM;
+    const room = this.getRoom(roomId);
+    if (!room) {
+      throw new RegistryError('room_not_found', `Room "${roomId}" does not exist`);
+    }
+
     const participant = this.getParticipant(kind, opts.userId, assistantKey);
     if (!participant || participant.room_id !== roomId) {
       throw new RegistryError(
@@ -413,29 +446,15 @@ export class RegistryStore {
       );
     }
 
-    const parsed = parseSlashCommand(body);
-    const now = new Date().toISOString();
-    const result = this.db
-      .prepare(
-        `INSERT INTO messages
-           (room_id, user_id, assistant_id, display_name, body, kind, command, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        roomId,
-        opts.userId,
-        assistantKey,
-        participant.display_name,
-        body,
-        parsed.kind,
-        parsed.command,
-        now,
-      );
-
-    const message = this.getMessage(Number(result.lastInsertRowid));
-    if (!message) {
-      throw new RegistryError('internal', 'post_message succeeded but message row missing');
-    }
+    const message = this.insertMessage({
+      roomId,
+      userId: opts.userId,
+      assistantKey,
+      displayName: participant.display_name,
+      body,
+      kind: parsed.kind,
+      command: parsed.command,
+    });
 
     if (parsed.kind === 'command' && parsed.command === 'whos-here') {
       const listing = this.listRoom(roomId);
@@ -456,12 +475,170 @@ export class RegistryStore {
         command_result: null,
         command_error: {
           code: 'unknown_command',
-          message: `Unknown room command "/${parsed.command}". Supported: /whos-here`,
+          message: `Unknown room command "/${parsed.command}". Supported: /join, /leave, /whos-here`,
         },
       };
     }
 
     return { message, command_result: null };
+  }
+
+  private handleJoinCommand(opts: {
+    userId: string;
+    participantKind: ParticipantKind;
+    assistantId?: string;
+    body: string;
+    roomArg: string | null;
+    roomIdHint?: string;
+  }): PostMessageResult {
+    const roomId = resolveRoomCommandTarget(opts.roomArg, opts.roomIdHint);
+    const room = this.getRoom(roomId);
+    if (!room) {
+      throw new RegistryError('room_not_found', `Room "${roomId}" does not exist`);
+    }
+
+    const participant = this.checkIn({
+      userId: opts.userId,
+      roomId,
+      participantKind: opts.participantKind,
+      assistantId: opts.assistantId,
+    });
+
+    const assistantKey = participant.assistant_id ?? '';
+    const message = this.insertMessage({
+      roomId,
+      userId: opts.userId,
+      assistantKey,
+      displayName: participant.display_name,
+      body: opts.body,
+      kind: 'command',
+      command: 'join',
+    });
+
+    const helloBody = `Hello, ${participant.display_name} here.`;
+    const hello = this.insertMessage({
+      roomId,
+      userId: opts.userId,
+      assistantKey,
+      displayName: participant.display_name,
+      body: helloBody,
+      kind: 'message',
+      command: null,
+    });
+
+    const listing = this.listRoom(roomId);
+    return {
+      message,
+      command_result: {
+        command: 'join',
+        room: listing.room,
+        participants: listing.participants,
+        game: listing.game,
+        hello,
+      },
+    };
+  }
+
+  private handleLeaveCommand(opts: {
+    userId: string;
+    participantKind: ParticipantKind;
+    assistantId?: string;
+    body: string;
+    roomArg: string | null;
+    roomIdHint?: string;
+  }): PostMessageResult {
+    const roomId = resolveRoomCommandTarget(opts.roomArg, opts.roomIdHint);
+    const room = this.getRoom(roomId);
+    if (!room) {
+      throw new RegistryError('room_not_found', `Room "${roomId}" does not exist`);
+    }
+
+    const assistantKey =
+      opts.participantKind === 'assistant' ? (opts.assistantId?.trim() ?? '') : '';
+    if (opts.participantKind === 'assistant' && !assistantKey) {
+      throw new RegistryError(
+        'invalid_participant',
+        'assistant_id is required when leaving as an assistant',
+      );
+    }
+
+    const participant = this.getParticipant(opts.participantKind, opts.userId, assistantKey);
+    if (!participant || participant.room_id !== roomId) {
+      throw new RegistryError(
+        'not_in_room',
+        `Not checked into room "${roomId}"; cannot /leave`,
+      );
+    }
+
+    const message = this.insertMessage({
+      roomId,
+      userId: opts.userId,
+      assistantKey,
+      displayName: participant.display_name,
+      body: opts.body,
+      kind: 'command',
+      command: 'leave',
+    });
+
+    const goodbye = this.insertMessage({
+      roomId,
+      userId: opts.userId,
+      assistantKey,
+      displayName: participant.display_name,
+      body: `Goodbye, ${participant.display_name} leaving.`,
+      kind: 'message',
+      command: null,
+    });
+
+    const checkedOut = this.checkOut({
+      userId: opts.userId,
+      participantKind: opts.participantKind,
+      assistantId: opts.assistantId,
+    });
+
+    return {
+      message,
+      command_result: {
+        command: 'leave',
+        room,
+        goodbye,
+        checked_out: checkedOut.checked_out,
+      },
+    };
+  }
+
+  private insertMessage(input: {
+    roomId: string;
+    userId: string;
+    assistantKey: string;
+    displayName: string;
+    body: string;
+    kind: MessageKind;
+    command: string | null;
+  }): RoomMessage {
+    const now = new Date().toISOString();
+    const result = this.db
+      .prepare(
+        `INSERT INTO messages
+           (room_id, user_id, assistant_id, display_name, body, kind, command, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        input.roomId,
+        input.userId,
+        input.assistantKey,
+        input.displayName,
+        input.body,
+        input.kind,
+        input.command,
+        now,
+      );
+
+    const message = this.getMessage(Number(result.lastInsertRowid));
+    if (!message) {
+      throw new RegistryError('internal', 'post_message succeeded but message row missing');
+    }
+    return message;
   }
 
   listMessages(opts: {
@@ -813,16 +990,31 @@ function dedupeAssistants(assistants: Assistant[]): Assistant[] {
   return [...seen.values()];
 }
 
-function parseSlashCommand(body: string): { kind: MessageKind; command: string | null } {
+function parseSlashCommand(body: string): {
+  kind: MessageKind;
+  command: string | null;
+  arg: string | null;
+} {
   if (!body.startsWith('/')) {
-    return { kind: 'message', command: null };
+    return { kind: 'message', command: null, arg: null };
   }
-  const token = body.slice(1).split(/\s+/, 1)[0] ?? '';
-  const command = token.trim().toLowerCase();
+  const rest = body.slice(1).trim();
+  const parts = rest.split(/\s+/).filter(Boolean);
+  const command = (parts[0] ?? '').toLowerCase();
   if (!command) {
     throw new RegistryError('invalid_command', 'Slash command name is required after "/"');
   }
-  return { kind: 'command', command };
+  const arg = parts[1]?.trim() || null;
+  return { kind: 'command', command, arg };
+}
+
+/** Slash arg wins, then post_message room hint, then lobby. */
+function resolveRoomCommandTarget(roomArg: string | null, roomIdHint?: string): string {
+  const fromArg = roomArg?.trim();
+  if (fromArg) return fromArg;
+  const fromHint = roomIdHint?.trim();
+  if (fromHint) return fromHint;
+  return DEFAULT_ROOM;
 }
 
 function clampLimit(limit: number | undefined): number {

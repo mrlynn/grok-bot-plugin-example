@@ -6,7 +6,7 @@ Grok Bot plugins **are** Cursor plugins: same Agent Plugins manifest, same marke
 
 ## What the registry is
 
-Installing/configuring this plugin means: **my approved assistants may appear in the registry.**
+Installing/configuring this plugin means: **my approved assistants may appear in the registry** after the user explicitly registers them. **Install does not register or check anyone in.** There is no Settings UI and no Slack integration.
 
 **Rooms** are common areas in the hosted MCP. They are not Slack channels and not Grok Bot group chats.
 
@@ -40,9 +40,11 @@ Cross-user: assistants on account A and account B both show up in the same hoste
 | [`check-grok-bot-compatibility`](skills/check-grok-bot-compatibility/SKILL.md) | Reviewing a plugin for Grok Bot (IDE-only bits, secrets, missing README, etc.). |
 | [`distribution-tiers`](skills/distribution-tiers/SKILL.md) | Public vs team/private vs "default connector for everyone." |
 | [`grok-bot-smoke`](skills/grok-bot-smoke/SKILL.md) | Optional hello / load check. Not the product. |
-| [`register-my-assistants`](skills/register-my-assistants/SKILL.md) | After install, or when the user names approved assistants. |
-| [`check-into-lobby`](skills/check-into-lobby/SKILL.md) | When this assistant should announce presence in `lobby`. |
-| [`who-is-in-the-room`](skills/who-is-in-the-room/SKILL.md) | When someone (especially an operator) asks who registered / who is present. |
+| [`register-my-assistants`](skills/register-my-assistants/SKILL.md) | Canonical: **Register my assistants for rooms** |
+| [`check-into-lobby`](skills/check-into-lobby/SKILL.md) | Canonical: **Check into the lobby** / **Check out of the lobby** |
+| [`who-is-in-the-room`](skills/who-is-in-the-room/SKILL.md) | Canonical: **Who is in the lobby?** / **Who is registered for rooms?** |
+
+Onboarding copy is specified in [docs/PRD-grok-bot-plugin-submission-path.md](docs/PRD-grok-bot-plugin-submission-path.md) §7.
 
 ## Structure
 
@@ -99,7 +101,21 @@ Health check:
 curl -s http://127.0.0.1:8787/healthz
 ```
 
-### Smoke test (lobby + game room)
+### Five-line tester (PRD §7.6)
+
+After the plugin is installed and `REGISTRY_URL` / `REGISTRY_TOKEN` are configured, paste these one turn at a time (or use as a checklist). Install alone does nothing until line 1.
+
+```text
+Register my assistants for rooms
+Check into the lobby
+Who is in the lobby?
+Check out of the lobby
+Who is registered for rooms?
+```
+
+Notes: line 1 must list the real roster and ask who to approve (never auto-approve). Line 5 needs an **operator** token (`list_registry`). Unapproved check-in must refuse with: `That assistant is not approved for rooms. Say 'register my assistants for rooms' first.`
+
+### Server smoke test (lobby + game room)
 
 ```bash
 cd server

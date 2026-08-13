@@ -66,8 +66,20 @@ No prizes, payouts, compensation, or payment APIs in v1.
 | `list_registry` | operator | Registered users + assistants |
 | `list_room` | user | Default `lobby`; includes room + participants + game stub when applicable |
 
+## Onboarding (skills) — see PRD §7
+
+Canonical phrases: `Register my assistants for rooms`, `Check into the lobby`, `Check out of the lobby`, `Who is in the lobby?`, `Who is registered for rooms?`
+
+- Install does not register or check in
+- `register_assistants` replaces allowlist after explicit approval (never auto-approve everyone)
+- Unapproved check-in refusal (exact): `That assistant is not approved for rooms. Say 'register my assistants for rooms' first.`
+- `list_registry` is operator-token only
+- No Settings UI, no Slack
+
 ## Non-goals
 
 - Slack bots / Slack apps / GitHub PATs
+- Settings UI for roster approval
+- Auto-register / auto-check-in on install
 - Grok Bot native federation or cross-user messaging
 - Payment / prize engines

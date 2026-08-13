@@ -1,14 +1,18 @@
-# SPEC: Grok Bot plugin + hosted registry (v1)
+# SPEC: Grok Bot plugin + host-run registry (v1)
 
 ## Surfaces
 
 - Agent Plugins package: `plugin.json`, `mcp.json`, skills (no IDE-only components).
-- Hosted MCP registry (Streamable HTTP) is the cross-user store.
+- Optional host-run MCP registry in `server/` (Node 22, Streamable HTTP `/mcp`, SQLite) is the cross-user store for **that** host.
+- Installing the plugin does not start `server/`. Guests never need to run it.
+- No Cursor-hosted global registry in v1. Operating model: [HOST-AND-INVITE.md](HOST-AND-INVITE.md).
 
 ## Auth
 
-- Preferred: `REGISTRY_TOKENS` JSON map → `{ userId, role: "user"|"operator" }`.
-- Fallback: `REGISTRY_TOKEN` + `X-Grok-User` (forgeable; demos only).
+- Preferred: `REGISTRY_TOKENS` JSON map → `{ userId, role: "user"|"operator" }`. One bearer token per person for invites; operator token for host-only tools (`create_room`, `list_registry`).
+- Plugin variables (Plugins → Configure): `REGISTRY_URL` (host's public HTTPS `/mcp` for real guests) + `REGISTRY_TOKEN` (that install's bearer).
+- Fallback: `REGISTRY_TOKEN` + `X-Grok-User` (forgeable / identity-colliding; demos only).
+- Host should set `ALLOWED_HOSTS` to the public hostname when binding beyond localhost.
 
 ## Rooms
 
@@ -23,7 +27,8 @@ type Room = {
 
 - Unknown `type` → error.
 - Boot seed: `{ id: "lobby", type: "general", title: "Lobby", created_by: "system" }`.
-- Rooms are MCP common areas (not Slack, not Grok Bot chats).
+- Rooms are MCP common areas on **one** host process (not Slack, not Grok Bot chats, not a global Cursor lobby).
+- Each `server/` process has its own SQLite universe; two hosts = two lobbies.
 - `lobby` is the default welcome room.
 
 ## Participants
@@ -115,8 +120,23 @@ Hard room slash commands (PRD §7.8, skill `rooms-slash-commands`): `/rooms` (al
 - `list_registry` is operator-token only
 - No Settings UI, no Slack
 
+## Invite (product semantics)
+
+- Invite = plugin install pointer (this repo or marketplace) + host `REGISTRY_URL` + per-person token from `REGISTRY_TOKENS`.
+- Not a Slack invite, not a native Grok Bot group/federation invite, not a Cursor central rooms join link.
+- Never distribute the operator token or another person's user token as part of an invite.
+
+## Limits (v1)
+
+- `REGISTRY_URL` must be reachable by Grok Bot's MCP client (public HTTPS for real guests; host localhost is not).
+- Shared one-token-for-everyone is forgeable; prefer the token map.
+- Host owns uptime and who can see presence on that server.
+- No Cursor central rooms service.
+
 ## Non-goals
 
+- Cursor-hosted global / multi-tenant rooms service
+- Second repository for the registry server (`server/` stays in this repo)
 - Slack bots / Slack apps / GitHub PATs
 - Settings UI for roster approval
 - Native plugin-onload modal (document skill-based first-load instead)

@@ -1,14 +1,35 @@
 # grok-bot-plugin-example
 
-Agent plugin that helps a **publisher** (or a Cursor AE/FE answering one) go from "I have an MCP server or skill" to "it appears in Grok Bot," and ships a **hosted assistant registry** with **rooms** so approved Grok Bot assistants (and, in game rooms, users) can register and check in across accounts.
+Agent plugin that helps a **publisher** (or a Cursor AE/FE answering one) go from "I have an MCP server or skill" to "it appears in Grok Bot," and includes an **optional registry server** (`server/`) with **rooms** so approved Grok Bot assistants (and, in game rooms, users) can register and check in across accounts **on the same host**.
 
-Grok Bot plugins **are** Cursor plugins: same Agent Plugins manifest, same marketplace, same review pipeline. Skills alone cannot share state across accounts. The remote MCP registry is the shared store.
+Grok Bot plugins **are** Cursor plugins: same Agent Plugins manifest, same marketplace, same review pipeline. Skills alone cannot share state across accounts. The remote MCP registry (a process someone runs) is the shared store for that host.
+
+## v1 operating model (host and invite)
+
+**There is no Cursor-hosted global rooms service in v1.** Any user can run their own registry and invite other Grok Bot users onto it.
+
+| Piece | Role |
+| --- | --- |
+| **This plugin** (skills + `mcp.json`) | Everyone installs the same package. Install does **not** start a server. |
+| **`server/`** (Node 22, Streamable HTTP `/mcp`, SQLite) | Optional process the **host** runs. Each running server is its own universe (own rooms, own lobby, own DB). |
+| **Guests** | Do not run a server. Configure `REGISTRY_URL` + their `REGISTRY_TOKEN`. |
+
+**Invite** = plugin install pointer (this repo or marketplace) + host's public HTTPS `REGISTRY_URL` + a per-person token from the host's `REGISTRY_TOKENS`. Not a Slack bot. Not a native Grok Bot group invite.
+
+```mermaid
+flowchart LR
+  GB["Guest Grok Bot"] --> Plugin["Plugin MCP client"]
+  Plugin -->|"HTTPS + Bearer token"| MCP["Host /mcp"]
+  MCP --> DB[(SQLite)]
+```
+
+Full host steps, guest steps, and limits: **[docs/HOST-AND-INVITE.md](docs/HOST-AND-INVITE.md)**.
 
 ## What the registry is
 
-Installing/configuring this plugin means: **my approved assistants may appear in the registry** after the user explicitly registers them or accepts the first-load welcome prompt. **Install does not silent-register or silent-check anyone in** — the first chat **prompts**. There is no Settings UI, no native plugin-onload modal, and no Slack integration.
+Installing/configuring this plugin means: **my approved assistants may appear in the registry the plugin is pointed at** after the user explicitly registers them or accepts the first-load welcome prompt. **Install does not silent-register or silent-check anyone in** — the first chat **prompts**. There is no Settings UI, no native plugin-onload modal, and no Slack integration.
 
-**Rooms** are common areas in the hosted MCP. They are not Slack channels and not Grok Bot group chats. Default welcome room: `lobby`.
+**Rooms** are common areas in **that host's** MCP. They are not Slack channels and not Grok Bot group chats. Default welcome room: `lobby`.
 
 Room record: `{ id, type, title, created_by }`.
 
@@ -31,7 +52,7 @@ Unknown room types error. Rooms also have a **message log** (`post_message` / `l
 | Post a room message or slash command (`/rooms`, `/join`, `/leave`, `/whos-here`) | `post_message` | Authenticated user |
 | List room message / command log | `list_messages` | Authenticated user |
 
-Cross-user: assistants on account A and account B both show up in the same hosted registry. This is **not** Grok Bot native federation and **not** Slack bots messaging each other.
+Cross-user on one host: assistants on account A and account B both show up in **that host's** registry when both use the same `REGISTRY_URL` with their own tokens. Two hosts = two lobbies. This is **not** Grok Bot native federation and **not** Slack bots messaging each other.
 
 ## Skills
 
@@ -60,8 +81,8 @@ Grok Bot may have **no** native plugin-onload modal. v1 uses the `welcome-to-lob
 plugin.json          # Agent Plugins manifest + variables schema
 mcp.json             # Remote Streamable HTTP registry (${REGISTRY_URL}, ${REGISTRY_TOKEN})
 skills/              # Publisher skills + registry skills
-server/              # Hosted MCP registry (Node, Streamable HTTP, SQLite)
-docs/                # Short PRD / SPEC for the submission + registry path
+server/              # Optional host-run MCP registry (Node 22, Streamable HTTP, SQLite)
+docs/                # PRD / SPEC + HOST-AND-INVITE operating model
 README.md
 LICENSE
 .gitignore
@@ -75,8 +96,8 @@ Declare only names in `plugin.json` `variables`. Set values in the dashboard und
 
 | Variable | Purpose |
 | --- | --- |
-| `REGISTRY_URL` | Streamable HTTP URL, e.g. `https://your-host.example/mcp` or `http://127.0.0.1:8787/mcp` |
-| `REGISTRY_TOKEN` | Bearer token for this install (must match a server-side token) |
+| `REGISTRY_URL` | Host's Streamable HTTP URL, e.g. `https://rooms.example.com/mcp` (public HTTPS for real guests) or `http://127.0.0.1:8787/mcp` (local only) |
+| `REGISTRY_TOKEN` | Bearer token the **host minted for you** in `REGISTRY_TOKENS` (never share operator or other people's tokens) |
 
 `mcp.json` wires:
 
@@ -169,26 +190,29 @@ curl -s http://127.0.0.1:8787/mcp \
 
 Then call tools (`register_assistants`, `check_in`, `post_message`, `list_messages`, `list_room`, …) the same way with `tools/call`. Prefer the smoke script or MCP Inspector for a full handshake.
 
-## Deploy (one recommended path)
+## Deploy (host runs `server/`)
+
+You are the host. Guests only need the plugin + your URL + their token. Step-by-step invite flow: [docs/HOST-AND-INVITE.md](docs/HOST-AND-INVITE.md).
 
 Run `server/` as a single long-lived **Node 22** HTTP service (Fly.io, Railway, Render, a VM, etc.):
 
-1. Deploy the `server/` directory.
+1. Deploy the `server/` directory (stays in this repo; no second repo).
 2. Set env:
-   - `REGISTRY_TOKENS` — JSON map of bearer token → `{ "userId", "role" }` (`user` or `operator`)
+   - `REGISTRY_TOKENS` — JSON map of bearer token → `{ "userId", "role" }` (`user` or `operator`); **one user token per invitee**, operator for the host
    - `REGISTRY_DB_PATH` — persistent volume path for the SQLite file
    - `PORT` — platform port
    - `HOST=0.0.0.0`
-   - Optional: `ALLOWED_HOSTS`, `ALLOWED_ORIGINS` for Host/Origin checks
-3. Put TLS in front (platform proxy or reverse proxy). Point plugin `REGISTRY_URL` at `https://<host>/mcp`.
-4. Issue each install its own token from `REGISTRY_TOKENS`. Give operators `role: "operator"`.
+   - `ALLOWED_HOSTS` — public hostname(s) when not on localhost
+   - Optional: `ALLOWED_ORIGINS` for Origin checks
+3. Put TLS in front (platform proxy or reverse proxy). Guests' `REGISTRY_URL` must be that public `https://<host>/mcp` — not your laptop's localhost.
+4. Invite each person with plugin pointer + URL + **their** token only. Never send the operator token or someone else's token.
 
-SQLite is fine for v1. The store is isolated in `server/src/store.ts` so a host can swap in Postgres later.
+SQLite is fine for v1. The store is isolated in `server/src/store.ts` so a host can swap in Postgres later. There is still **no** Cursor central rooms service.
 
 ### Auth notes (honest)
 
-- **Preferred:** `REGISTRY_TOKENS` binds each bearer token to a user id and role. Clients cannot pick another user id.
-- **Fallback:** `REGISTRY_TOKEN` (shared) + `X-Grok-User` (and optional `X-Grok-Role: operator`). Anyone with the shared token can claim any user id. Documented forgeability; use only for local demos.
+- **Preferred:** `REGISTRY_TOKENS` binds each bearer token to a user id and role. Clients cannot pick another user id. Use this for invites.
+- **Fallback:** `REGISTRY_TOKEN` (shared) + `X-Grok-User` (and optional `X-Grok-Role: operator`). Anyone with the shared token can claim any user id. Documented forgeability / identity collision; use only for local demos.
 
 ## Submit path (canonical)
 
@@ -221,11 +245,13 @@ Set `REGISTRY_URL` / `REGISTRY_TOKEN` via Plugins → Configure (or your local M
 
 ## What this is not
 
+- Not a Cursor-hosted global rooms / registry service (v1 = each host runs their own `server/`)
 - Not Grok Bot native cross-user messaging or federation
 - Not Slack bots / Slack apps / GitHub PATs
 - Not a second marketplace or fork of the plugin standard
 - Not a default-connector program
 - Not an IDE plugin pack (no Tab hooks, `workspaceOpen`, rules-only layouts)
+- Not "install plugin = server starts" — the host must run `server/` separately
 
 ## License
 

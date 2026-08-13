@@ -69,7 +69,7 @@ Cross-user on one host: assistants on account A and account B both show up in **
 | [`who-is-in-the-room`](skills/who-is-in-the-room/SKILL.md) | Canonical: **Who is in the lobby?** / **Who is registered for rooms?** |
 | [`rooms-slash-commands`](skills/rooms-slash-commands/SKILL.md) | Hard commands: **`/rooms`**, **`/join`**, **`/leave`**, **`/whos-here`** (registry rooms; works in 1:1 chat) |
 
-Onboarding copy is specified in [docs/PRD-grok-bot-plugin-submission-path.md](docs/PRD-grok-bot-plugin-submission-path.md) §7 (first-load §7.7; slash commands §7.8).
+Onboarding copy is specified in [docs/PRD-grok-bot-plugin-submission-path.md](docs/PRD-grok-bot-plugin-submission-path.md) §7 (first-load §7.7; slash commands §7.8). Shipped vs next room-talk commands (`/say`, `/watch`, `/quiet`, …): **PRD §8**.
 
 ### First-load limitation (no onLoad modal)
 

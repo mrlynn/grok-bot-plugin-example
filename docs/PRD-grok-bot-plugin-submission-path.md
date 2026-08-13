@@ -1,4 +1,4 @@
-# PRD: Grok Bot plugin submission path + hosted registry
+# PRD: Grok Bot plugin submission path + host-run registry
 
 ## Problem
 
@@ -7,13 +7,23 @@ Publishers need a clear path into Grok Bot (marketplace / Agent Plugins). Separa
 ## Product
 
 1. **Publisher companion** — skills that explain submit path, scaffold, compatibility, distribution tiers.
-2. **Hosted registry MCP** — remote Streamable HTTP server where approved Grok Bot assistants register and check into **rooms**.
+2. **Optional host-run registry MCP** — `server/` in this same repo: Node 22 Streamable HTTP `/mcp` + SQLite, where approved Grok Bot assistants register and check into **rooms** on **that** host.
 
-Installing the plugin means: my approved assistants **may** appear in the registry after the user configures variables and explicitly registers or accepts the first-load welcome prompt. **Install alone does not silent-register or silent-check anyone in** — first chat **prompts** (see §7.7).
+### v1 operating model
+
+- **One plugin package** (this repo): skills + `mcp.json`. Installing it does **not** start a server.
+- **One optional process** the host runs: `server/`. Each running instance is its own universe (own rooms, own lobby, own SQLite). Two hosts = two lobbies.
+- **No Cursor-hosted global rooms service** in v1. Collaboration = same plugin + host's public `REGISTRY_URL` + per-person `REGISTRY_TOKEN`.
+- **Guests** do not run a server. They configure Plugins → `REGISTRY_URL` + `REGISTRY_TOKEN`.
+- **Invite** = plugin install pointer (repo or marketplace) + URL + that person's token. Not Slack. Not a native Grok Bot group invite.
+
+See [HOST-AND-INVITE.md](HOST-AND-INVITE.md) for host/guest steps, architecture map, and limits.
+
+Installing the plugin means: my approved assistants **may** appear in the registry the plugin is pointed at after the user configures variables and explicitly registers or accepts the first-load welcome prompt. **Install alone does not silent-register or silent-check anyone in** — first chat **prompts** (see §7.7).
 
 ## Rooms
 
-Rooms are common areas inside the hosted MCP. They are not Slack and not Grok Bot group chats.
+Rooms are common areas inside **the host's** MCP registry. They are not Slack and not Grok Bot group chats.
 
 - Types in v1: `general` | `game`
 - Default room `lobby` (`general`) exists at boot (welcome room)
@@ -26,19 +36,23 @@ Rooms are common areas inside the hosted MCP. They are not Slack and not Grok Bo
 
 ## Success (v1)
 
-- Two different user ids can register + check assistants into `lobby` and both appear in `list_room`
+- A host can deploy `server/`, mint per-person tokens, and invite a colleague with URL + token; both appear in the same `lobby` via `list_room` / `/whos-here`
+- Two different user ids on the **same** host can register + check assistants into `lobby` and both appear in `list_room`
 - Operator can create a `game` room; user + assistant participants both appear
 - First-load welcome: pick one assistant → register if needed → check into `lobby` → hello message → `/whos-here` listing
 - No secrets in the plugin repo; tokens via Plugins → Configure / server env
+- Docs alone (`HOST-AND-INVITE.md` + README) are enough to host and invite without inventing a central Cursor service
 
 ## Out of scope
 
+- Cursor-hosted global / multi-tenant rooms service
 - Native Grok Bot messaging between accounts
 - Native plugin-onload modal / Settings click-path for first-load (v1 uses a skill prompt instead; see §7.7)
 - Slack bots, Slack apps, GitHub PATs
 - Settings UI for the registry
 - Prizes, payouts, compensation, payment APIs
 - Silent auto-register or silent auto-check-in on install (prompting is in scope)
+- A second repo for the server (keep `server/` here)
 
 ---
 
@@ -125,7 +139,7 @@ Installer/tester check: after accepting with one assistant, `list_room` / `/whos
 
 ### 7.8 Room slash commands (`/rooms`, `/join`, `/leave`, `/whos-here`)
 
-Skills **must** treat these as deterministic registry commands (skill `rooms-slash-commands`). A 1:1 Grok Bot chat is fine: the target is the **hosted room**, not whether the chat is a group.
+Skills **must** treat these as deterministic registry commands (skill `rooms-slash-commands`). A 1:1 Grok Bot chat is fine: the target is the **host's registry room**, not whether the chat is a group.
 
 **/rooms** (alias `/list-rooms`):
 

@@ -1,51 +1,78 @@
 # grok-bot-plugin-example
 
-Example Grok Bot plugin stub in the Agent Plugins format: root `plugin.json`, portable skills, and optional MCP servers. This is not an IDE plugin. It has no `.cursor-plugin/` layout and no IDE-only components (hooks, Tab events, workspaceOpen).
+Agent plugin that helps a **publisher** (or a Cursor AE/FE answering one) go from "I have an MCP server or skill" to "it appears in Grok Bot," without a hand-routed Slack thread.
 
-Grok Bot plugins are Cursor plugins. They share the same marketplace and review pipeline, but this example is the Grok Bot-shaped subset (skills plus optional MCP) for agentic, non-IDE workflows.
+Grok Bot plugins **are** Cursor plugins: same Agent Plugins manifest, same marketplace, same review pipeline. This repo is the Grok Bot-facing companion (surfaces, submit misconceptions, tiers, compatibility). It is not a second marketplace and not a generic Cursor scaffold — for that, use the marketplace **"Create Plugin"** pack.
+
+## Skills
+
+| Skill | When to use it |
+| --- | --- |
+| [`get-listed-in-grok-bot`](skills/get-listed-in-grok-bot/SKILL.md) | "How do I get my MCP/plugin into Grok Bot?" Canonical answer for AEs to paste. |
+| [`scaffold-grok-bot-plugin`](skills/scaffold-grok-bot-plugin/SKILL.md) | Starting a Grok Bot–ready Agent Plugin (copy-pasteable files). |
+| [`check-grok-bot-compatibility`](skills/check-grok-bot-compatibility/SKILL.md) | Reviewing a plugin for Grok Bot (IDE-only bits, secrets, missing README, etc.). |
+| [`distribution-tiers`](skills/distribution-tiers/SKILL.md) | Public vs team/private vs "default connector for everyone." |
+| [`grok-bot-smoke`](skills/grok-bot-smoke/SKILL.md) | Optional hello / load check. Not the product. |
 
 ## Structure
 
-```
+```text
 plugin.json
-skills/grok-bot-smoke/SKILL.md
+skills/
+  get-listed-in-grok-bot/SKILL.md
+  scaffold-grok-bot-plugin/SKILL.md
+  check-grok-bot-compatibility/SKILL.md
+  distribution-tiers/SKILL.md
+  grok-bot-smoke/SKILL.md
 README.md
 LICENSE
 .gitignore
 ```
 
-- `plugin.json` - Agent Plugins manifest (name, description, version, author).
-- `skills/grok-bot-smoke` - smoke-test skill. Ask whether this plugin is loaded, or request a hello, to verify local install.
+Skills-only Agent Plugin. No `mcp.json`, no `.cursor-plugin/`, no hooks, rules, agents, or commands.
 
-This stub is skills-only. There is no `mcp.json` yet.
+## Submit path (canonical)
 
-## Local testing in Grok Bot
+1. Public Git repository.
+2. Agent Plugins layout: root `plugin.json` (`$schema` from agent-plugins.org), skills and/or `mcp.json`.
+3. Submit at **https://cursor.com/marketplace/publish** (or send the repo to the Cursor team).
+4. Open source + manual review (including updates).
 
-The exact local plugins path for Grok Bot is not documented here. Cursor IDE uses `~/.cursor/plugins/local/<name>` then reload.
+Cursor IDE, CLI, and Grok Bot share the same marketplace listing today.
 
-To try this stub:
+**Not a submission destination:** `github.com/xai-org/plugin-marketplace`. That guess is wrong; do not use it.
 
-1. Copy or symlink this directory into the local plugins folder Grok Bot uses.
-2. Restart Grok Bot.
-3. Ask: "is the grok-bot-plugin-example plugin loaded?"
+## Distribution tiers (short)
 
-The smoke skill should confirm the plugin is loaded.
+| Goal | Reality |
+| --- | --- |
+| Available to anyone | Public marketplace listing |
+| Team / private | Dashboard → Plugins (documented for Cursor; **Grok Bot coverage unverified**) |
+| Default connector for everyone | **Does not exist.** Answer is marketplace listing, not a special program |
 
-## Submit
+## Local testing
 
-Publish via https://cursor.com/marketplace/publish (or send a public Git repo to the Cursor team). All plugins are open source and manually reviewed.
+**Cursor IDE (documented):** copy or symlink into `~/.cursor/plugins/local/<name>`, then reload.
 
-`github.com/xai-org/plugin-marketplace` is not a submission destination.
+```bash
+ln -s /path/to/grok-bot-plugin-example ~/.cursor/plugins/local/grok-bot-plugin-example
+```
 
-Cursor IDE, CLI, and Grok Bot share the same marketplace. This example avoids IDE-only components so it stays valid for Grok Bot.
+**Grok Bot:** exact local path is **not confirmed** (Electron userData renamed from Sand to Grok Bot). Do not assume it shares `~/.cursor/plugins/local/`. Verify against the current client.
 
-## Adding an MCP server later
+After load, ask whether this plugin is installed, or ask how to get an MCP into Grok Bot.
 
-To add an MCP server:
+## Secrets (when you add MCP later)
 
-1. Put `mcp.json` at the plugin root.
-2. Declare any secrets as `variables` in `plugin.json` (schema only).
-3. Reference them as `${VAR}` placeholders. Never commit real values.
+Declare `variables` (JSON Schema, names only) in the manifest. Use `${VAR}` only in `mcp.json`. Set values in the dashboard under **Plugins → Configure**. Never store secrets in the plugin.
+
+## What this is not
+
+- Not a second marketplace or fork of the plugin standard
+- Not a default-connector program or request form
+- Not a fix for legacy hardcoded client plugins
+- Not an IDE plugin pack (no Tab hooks, `workspaceOpen`, rules-only layouts)
+- Not a replacement for the marketplace "Create Plugin" pack (generic scaffold + review)
 
 ## License
 
